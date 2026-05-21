@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, StyleSheet, TouchableOpacity, View, ScrollView, TextInput } from 'react-native';
-import { Text } from '@/components/Themed';
+import { Modal, StyleSheet, TouchableOpacity, View, ScrollView } from 'react-native';
+import { Text, TextInput } from '@/components/Themed';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { ACCENT_GOLD } from '@/constants/Colors';
 

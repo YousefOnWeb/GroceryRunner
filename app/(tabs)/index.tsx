@@ -1,6 +1,6 @@
 import CreditLogModal from '@/components/CreditLogModal';
 import PromptModal from '@/components/PromptModal';
-import { Text, View } from '@/components/Themed';
+import { Text, View, TextInput } from '@/components/Themed';
 import UnknownPriceModal from '@/components/UnknownPriceModal';
 import { db } from '@/db';
 import { api } from '@/db/api';
@@ -20,7 +20,7 @@ import { ACCENT_GOLD, GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, METALLIC_BEVEL } from
 // -----------------------
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Alert, AppState, I18nManager, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, FlatList } from 'react-native';
+import { Alert, AppState, I18nManager, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
 
 const getHardwareInfo = () => {
   return {

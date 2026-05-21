@@ -2,7 +2,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import CreateItemModal from '@/components/CreateItemModal';
 import DropdownSelect from '@/components/DropdownSelect';
 import PersonModal from '@/components/PersonModal';
-import { Text, View } from '@/components/Themed';
+import { Text, View, TextInput } from '@/components/Themed';
 import { db } from '@/db';
 import { api } from '@/db/api';
 import { items, orderItems, orders, personAliases, persons, itemAliases } from '@/db/schema';
@@ -10,7 +10,7 @@ import { extractDateValue, formatDateLabel, getDefaultDate, getLocalDateString }
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, I18nManager } from 'react-native';
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, I18nManager } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSettings } from '@/utils/settings';
 import { useTranslation } from '@/utils/i18n';

@@ -1,4 +1,5 @@
-import { Text, View, StyleSheet, Switch, TouchableOpacity, Modal, SafeAreaView, ScrollView, Alert, I18nManager, NativeModules } from 'react-native';
+import { StyleSheet, Switch, TouchableOpacity, Modal, SafeAreaView, ScrollView, Alert, I18nManager, NativeModules } from 'react-native';
+import { Text, View } from '@/components/Themed';
 import { api } from '@/db/api';
 import { useSettings } from '@/utils/settings';
 import FontAwesome from '@expo/vector-icons/FontAwesome';

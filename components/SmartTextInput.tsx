@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { TextInput, TextInputProps, View, StyleSheet, TouchableOpacity, StyleProp, ViewStyle, Platform, UIManager, I18nManager } from 'react-native';
-import { Text } from './Themed';
+import { View, StyleSheet, TouchableOpacity, StyleProp, ViewStyle, Platform, UIManager, I18nManager } from 'react-native';
+import { Text, TextInput, TextInputProps } from './Themed';
 import { findSmartSuggestion } from '@/utils/textMatching';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 

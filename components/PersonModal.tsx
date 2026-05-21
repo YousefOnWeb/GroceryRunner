@@ -1,7 +1,7 @@
-import { Text } from '@/components/Themed';
+import { Text, TextInput } from '@/components/Themed';
 import { api } from '@/db/api';
 import React, { useEffect, useState } from 'react';
-import { Alert, I18nManager, Keyboard, Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, I18nManager, Keyboard, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSettings } from '@/utils/settings';
 import CreditLogModal from './CreditLogModal';

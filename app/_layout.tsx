@@ -31,6 +31,15 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     'Cinzel-Bold': require('../assets/fonts/Cinzel/static/Cinzel-Bold.ttf'),
     'Cinzel-Regular': require('../assets/fonts/Cinzel/static/Cinzel-Regular.ttf'),
+    'Estedad-Thin': require('../assets/fonts/Estedad/static/Estedad-Thin.ttf'),
+    'Estedad-ExtraLight': require('../assets/fonts/Estedad/static/Estedad-ExtraLight.ttf'),
+    'Estedad-Light': require('../assets/fonts/Estedad/static/Estedad-Light.ttf'),
+    'Estedad-Regular': require('../assets/fonts/Estedad/static/Estedad-Regular.ttf'),
+    'Estedad-Medium': require('../assets/fonts/Estedad/static/Estedad-Medium.ttf'),
+    'Estedad-SemiBold': require('../assets/fonts/Estedad/static/Estedad-SemiBold.ttf'),
+    'Estedad-Bold': require('../assets/fonts/Estedad/static/Estedad-Bold.ttf'),
+    'Estedad-ExtraBold': require('../assets/fonts/Estedad/static/Estedad-ExtraBold.ttf'),
+    'Estedad-Black': require('../assets/fonts/Estedad/static/Estedad-Black.ttf'),
     ...FontAwesome.font,
   });
 

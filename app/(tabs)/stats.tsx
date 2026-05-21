@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList } from 'react-native';
+import { StyleSheet, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList } from 'react-native';
 import { useSettings } from '@/utils/settings';
-import { Text, View } from '@/components/Themed';
+import { Text, View, TextInput } from '@/components/Themed';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { db } from '@/db';
 import { persons, items, orderItems, orders, itemAliases, placeAliases, sourceAliases } from '@/db/schema';

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, TouchableOpacity, View, TextInput, I18nManager, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text } from './Themed';
+import { Modal, ScrollView, StyleSheet, TouchableOpacity, View, I18nManager, KeyboardAvoidingView, Platform } from 'react-native';
+import { Text, TextInput } from './Themed';
 import { db } from '@/db';
 import { orders, orderItems, items } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';

@@ -18,7 +18,7 @@ function TabBarIcon(props: {
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const { t } = useTranslation();
+  const { t, isRTL } = useTranslation();
 
   return (
     <Tabs
@@ -35,16 +35,17 @@ export default function TabLayout() {
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '500',
+          fontFamily: isRTL ? 'Estedad-Medium' : undefined,
         },
         headerStyle: {
           backgroundColor: '#1a1a1a',
         },
         headerTintColor: ACCENT_GOLD,
         headerTitleStyle: {
-          fontFamily: 'Cinzel-Bold',
+          fontFamily: isRTL ? 'Estedad-Bold' : 'Cinzel-Bold',
           fontSize: 28,
-          letterSpacing: 3,
-          textTransform: 'uppercase',
+          letterSpacing: isRTL ? 0 : 3,
+          textTransform: isRTL ? 'none' : 'uppercase',
           color: ACCENT_GOLD,
         },
         headerTitleAlign: 'center',
