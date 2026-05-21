@@ -42,6 +42,7 @@ const perfLog = (message: string) => {
 
 export default function TheRunScreen() {
   const [targetDate, setTargetDate] = useState(getDefaultDate());
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   const [paidItems, setPaidItems] = useState<Record<string, boolean>>({});
@@ -116,6 +117,7 @@ export default function TheRunScreen() {
         - Total duration: ${totalTime.toFixed(2)}ms
         - System Hardware: OS=${hw.os} (v${hw.osVersion}), Device Model=${hw.deviceName}, JS Engine=${hw.jsEngine}`);
       dateChangePerfRef.current = null;
+      setIsTransitioning(false);
     }
   });
 
@@ -778,6 +780,8 @@ export default function TheRunScreen() {
   };
 
   const handlePrevDay = () => {
+    if (isTransitioning) return;
+    setIsTransitioning(true);
     const d = new Date(targetDate);
     d.setDate(d.getDate() - 1);
     const newDateStr = getLocalDateString(d);
@@ -792,6 +796,8 @@ export default function TheRunScreen() {
   };
 
   const handleNextDay = () => {
+    if (isTransitioning) return;
+    setIsTransitioning(true);
     const d = new Date(targetDate);
     d.setDate(d.getDate() + 1);
     const newDateStr = getLocalDateString(d);
@@ -810,7 +816,9 @@ export default function TheRunScreen() {
 
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(false);
+    if (isTransitioning) return;
     if (selectedDate) {
+      setIsTransitioning(true);
       const newDateStr = getLocalDateString(selectedDate);
       const oldDateStr = getLocalDateString(targetDate);
       perfLog(`[PERF] [User Action] onDateChange initiated (DatePicker). Transition: ${oldDateStr} -> ${newDateStr}`);
@@ -834,14 +842,26 @@ export default function TheRunScreen() {
           <View style={styles.headerLeft}>
             <Text style={[styles.headerTitle, settings.compactMode && styles.textSmall]}>{t('run.runLabel')}</Text>
             <View style={styles.dateNavRow}>
-              <TouchableOpacity onPress={handlePrevDay} style={[styles.navBtn, settings.compactMode && styles.paddingSmall]}>
+              <TouchableOpacity
+                disabled={isTransitioning}
+                onPress={handlePrevDay}
+                style={[styles.navBtn, settings.compactMode && styles.paddingSmall, isTransitioning && { opacity: 0.5 }]}
+              >
                 <FontAwesome name={I18nManager.isRTL ? "chevron-right" : "chevron-left"} size={settings.compactMode ? 14 : 16} color="#888" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact]}>
+              <TouchableOpacity
+                disabled={isTransitioning}
+                onPress={() => setShowDatePicker(true)}
+                style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact, isTransitioning && { opacity: 0.5 }]}
+              >
                 <Text style={[styles.dateDisplayText, settings.compactMode && styles.textSmall]}>{formatDateLabel(targetDate, t, t('modals.daysShort'))}</Text>
                 <FontAwesome name="calendar" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleNextDay} style={[styles.navBtn, settings.compactMode && styles.paddingSmall]}>
+              <TouchableOpacity
+                disabled={isTransitioning}
+                onPress={handleNextDay}
+                style={[styles.navBtn, settings.compactMode && styles.paddingSmall, isTransitioning && { opacity: 0.5 }]}
+              >
                 <FontAwesome name={I18nManager.isRTL ? "chevron-left" : "chevron-right"} size={settings.compactMode ? 14 : 16} color="#888" />
               </TouchableOpacity>
             </View>

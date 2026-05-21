@@ -11,7 +11,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { and, eq, sql } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform, Keyboard, I18nManager } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSettings } from '@/utils/settings';
 import { useTranslation } from '@/utils/i18n';
@@ -271,13 +271,34 @@ export default function PeopleScreen() {
     }
   };
 
-  return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
-    >
-      <ScrollView contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact]}>
+  const renderPersonItem = React.useCallback(({ item }: { item: any }) => {
+    const aliases = getAliasesForPerson(item.id);
+    const isSelected = selectedPersons.has(item.id);
+    const hasUnknownPrices = peopleWithUnknownPrices.has(item.id);
+    return (
+      <PersonCard
+        person={item}
+        aliases={aliases}
+        isSelected={isSelected}
+        selectionMode={selectionMode}
+        compactMode={settings.compactMode}
+        hasUnknownPrices={hasUnknownPrices}
+        t={t}
+        onLongPress={handleLongPress}
+        onPress={(id) => {
+          if (selectionMode) toggleSelection(id);
+        }}
+        onEdit={handleEditPress}
+        onOrders={setOrdersPerson}
+        onHistory={setLogPerson}
+        onUnknownPrice={setUnknownPricePerson}
+      />
+    );
+  }, [selectedPersons, selectionMode, settings.compactMode, peopleWithUnknownPrices, t, allAliases]);
+
+  const renderHeader = React.useCallback(() => {
+    return (
+      <View>
         {isSearching && (
           <TouchableOpacity 
             style={[styles.exitSearchBtn, settings.compactMode && styles.exitSearchBtnCompact]} 
@@ -406,87 +427,40 @@ export default function PeopleScreen() {
             </TouchableOpacity>
           </View>
         )}
+      </View>
+    );
+  }, [isSearching, searchQuery, selectionMode, selectedPersons, settings.compactMode, sortBy, sortOrder, t]);
 
-        {filteredPeople.map((person) => {
-          const aliases = getAliasesForPerson(person.id);
-          const isSelected = selectedPersons.has(person.id);
-          return (
-            <TouchableOpacity 
-              key={person.id} 
-              style={[
-                styles.card, 
-                settings.compactMode && styles.cardCompact,
-                isSelected && styles.cardSelected
-              ]}
-              onLongPress={() => handleLongPress(person.id)}
-              onPress={() => {
-                if (selectionMode) toggleSelection(person.id);
-              }}
-              activeOpacity={0.8}
-            >
-              <View style={styles.info}>
-                <View style={[styles.nameRow, settings.compactMode && styles.nameRowCompact]}>
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.name, settings.compactMode && styles.nameCompact, { flexShrink: 1, marginEnd: 10 }]}>{person.name}</Text>
-                  <View style={styles.personActions}>
-                    <TouchableOpacity onPress={() => setLogPerson({ id: person.id, name: person.name })} style={[styles.iconBtn, settings.compactMode && styles.paddingSmall]}>
-                      <FontAwesome name="history" size={settings.compactMode ? 14 : 18} color={ACCENT_GOLD} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setOrdersPerson({ id: person.id, name: person.name })} style={[styles.iconBtn, settings.compactMode && styles.paddingSmall]}>
-                      <FontAwesome name="shopping-cart" size={settings.compactMode ? 14 : 18} color={ACCENT_GOLD} />
-                    </TouchableOpacity>
-                    {!selectionMode && (
-                      <TouchableOpacity onPress={() => handleEditPress(person)} style={[styles.iconBtn, settings.compactMode && styles.paddingSmall]}>
-                        <FontAwesome name="pencil" size={settings.compactMode ? 14 : 18} color={ACCENT_GOLD} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-                {person.typicalPlace ? (
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.place, settings.compactMode && styles.textExtraSmall, { alignSelf: 'flex-start' }]}>📍 {person.typicalPlace}</Text>
-                ) : null}
-                {aliases.length > 0 ? (
-                  <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.aliases, settings.compactMode && styles.textExtraSmall, { alignSelf: 'flex-start' }]}>
-                    {t('people.aka')} {aliases.join(', ')}
-                  </Text>
-                ) : null}
-                <View style={[styles.balanceRow, settings.compactMode && styles.balanceRowCompact, { alignSelf: 'flex-start' }]}>
-                  <Text style={[styles.balance, settings.compactMode && styles.textSmall, { color: getBalanceColor(person.balance, peopleWithUnknownPrices.has(person.id)) }]}>
-                    {getBalanceLabel(person.balance, peopleWithUnknownPrices.has(person.id))}
-                  </Text>
-                  {peopleWithUnknownPrices.has(person.id) && (
-                    <TouchableOpacity
-                      onPress={() => setUnknownPricePerson({ id: person.id, name: person.name })}
-                      style={[styles.notesBtn, settings.compactMode && styles.paddingSmall]}>
-                      <FontAwesome name="exclamation-circle" size={settings.compactMode ? 14 : 18} color="#ff9800" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
+  const renderEmpty = React.useCallback(() => {
+    if (peopleList?.length === 0) {
+      return <Text style={styles.emptyText}>{t('people.emptyList')}</Text>;
+    }
+    if (searchQuery.trim() !== '' && filteredPeople.length === 0) {
+      return (
+        <View style={styles.noResultsContainer}>
+          <FontAwesome name="search" size={48} color="#444" style={{ marginBottom: 10 }} />
+          <Text style={styles.noResultsText}>{t('people.noMatch', { query: searchQuery })}</Text>
+        </View>
+      );
+    }
+    return null;
+  }, [peopleList, searchQuery, filteredPeople, t]);
 
-              {selectionMode && (
-                <View style={styles.checkboxContainer}>
-                  <FontAwesome 
-                    name={isSelected ? "check-circle" : "circle-thin"} 
-                    size={24} 
-                    color={isSelected ? ACCENT_GOLD : "#888"} 
-                  />
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-
-        {peopleList?.length === 0 && (
-          <Text style={styles.emptyText}>{t('people.emptyList')}</Text>
-        )}
-
-        {searchQuery.trim() !== '' && filteredPeople.length === 0 && (
-          <View style={styles.noResultsContainer}>
-            <FontAwesome name="search" size={48} color="#444" style={{ marginBottom: 10 }} />
-            <Text style={styles.noResultsText}>{t('people.noMatch', { query: searchQuery })}</Text>
-          </View>
-        )}
-      </ScrollView>
+  return (
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+    >
+      <FlatList
+        data={filteredPeople}
+        renderItem={renderPersonItem}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmpty}
+        contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact, { paddingBottom: 100 }]}
+        keyboardShouldPersistTaps="handled"
+      />
 
       {/* Create Person Modal */}
       <PersonModal
@@ -737,4 +711,121 @@ const styles = StyleSheet.create({
   sortBtnTextActive: {
     color: '#fff',
   },
+});
+
+// ==========================================
+// MEMOIZED PERFORMANCE-OPTIMIZED SUBCOMPONENTS
+// ==========================================
+
+interface PersonCardProps {
+  person: any;
+  aliases: string[];
+  isSelected: boolean;
+  selectionMode: boolean;
+  compactMode: boolean;
+  hasUnknownPrices: boolean;
+  t: (key: string, params?: any) => string;
+  onLongPress: (id: string) => void;
+  onPress: (id: string) => void;
+  onEdit: (person: any) => void;
+  onOrders: (personInfo: { id: string; name: string }) => void;
+  onHistory: (personInfo: { id: string; name: string }) => void;
+  onUnknownPrice: (personInfo: { id: string; name: string }) => void;
+}
+
+const getCardBalanceLabel = (balance: number, hasUnknownPrices: boolean, t: any) => {
+  if (balance < 0) {
+    return t('people.yourMoneyWithThem', { amount: Math.abs(balance).toFixed(2) });
+  } else if (balance > 0) {
+    return t('people.theirMoneyWithYou', { amount: balance.toFixed(2) });
+  } else {
+    return hasUnknownPrices ? t('people.awaitingPrices') : t('people.settled');
+  }
+};
+
+const getCardBalanceColor = (balance: number, hasUnknownPrices: boolean) => {
+  if (balance < 0) return '#ff4444';
+  if (balance > 0) return '#00C851';
+  return hasUnknownPrices ? '#ff9800' : '#aaa';
+};
+
+const PersonCard = React.memo(function PersonCard({
+  person,
+  aliases,
+  isSelected,
+  selectionMode,
+  compactMode,
+  hasUnknownPrices,
+  t,
+  onLongPress,
+  onPress,
+  onEdit,
+  onOrders,
+  onHistory,
+  onUnknownPrice,
+}: PersonCardProps) {
+  const balanceColor = getCardBalanceColor(person.balance, hasUnknownPrices);
+  const balanceLabel = getCardBalanceLabel(person.balance, hasUnknownPrices, t);
+
+  return (
+    <TouchableOpacity 
+      style={[
+        styles.card, 
+        compactMode && styles.cardCompact,
+        isSelected && styles.cardSelected
+      ]}
+      onLongPress={() => onLongPress(person.id)}
+      onPress={() => onPress(person.id)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.info}>
+        <View style={[styles.nameRow, compactMode && styles.nameRowCompact]}>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.name, compactMode && styles.nameCompact, { flexShrink: 1, marginEnd: 10 }]}>{person.name}</Text>
+          <View style={styles.personActions}>
+            <TouchableOpacity onPress={() => onHistory({ id: person.id, name: person.name })} style={[styles.iconBtn, compactMode && styles.paddingSmall]}>
+              <FontAwesome name="history" size={compactMode ? 14 : 18} color={ACCENT_GOLD} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onOrders({ id: person.id, name: person.name })} style={[styles.iconBtn, compactMode && styles.paddingSmall]}>
+              <FontAwesome name="shopping-cart" size={compactMode ? 14 : 18} color={ACCENT_GOLD} />
+            </TouchableOpacity>
+            {!selectionMode && (
+              <TouchableOpacity onPress={() => onEdit(person)} style={[styles.iconBtn, compactMode && styles.paddingSmall]}>
+                <FontAwesome name="pencil" size={compactMode ? 14 : 18} color={ACCENT_GOLD} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+        {person.typicalPlace ? (
+          <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.place, compactMode && styles.textExtraSmall, { alignSelf: 'flex-start' }]}>📍 {person.typicalPlace}</Text>
+        ) : null}
+        {aliases.length > 0 ? (
+          <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.aliases, compactMode && styles.textExtraSmall, { alignSelf: 'flex-start' }]}>
+            {t('people.aka')} {aliases.join(', ')}
+          </Text>
+        ) : null}
+        <View style={[styles.balanceRow, compactMode && styles.balanceRowCompact, { alignSelf: 'flex-start' }]}>
+          <Text style={[styles.balance, compactMode && styles.textSmall, { color: balanceColor }]}>
+            {balanceLabel}
+          </Text>
+          {hasUnknownPrices && (
+            <TouchableOpacity
+              onPress={() => onUnknownPrice({ id: person.id, name: person.name })}
+              style={[styles.notesBtn, compactMode && styles.paddingSmall]}>
+              <FontAwesome name="exclamation-circle" size={compactMode ? 14 : 18} color="#ff9800" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {selectionMode && (
+        <View style={styles.checkboxContainer}>
+          <FontAwesome 
+            name={isSelected ? "check-circle" : "circle-thin"} 
+            size={24} 
+            color={isSelected ? ACCENT_GOLD : "#888"} 
+          />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 });

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager } from 'react-native';
+import { StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList } from 'react-native';
 import { useSettings } from '@/utils/settings';
 import { Text, View } from '@/components/Themed';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
@@ -108,8 +108,6 @@ export default function StatsScreen() {
 
   // --- ACTIONS ---
 
-  const handleEditClick = (item: any) => { setEditingItem(item); };
-
   const handleSaveItem = async (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[]) => {
     if (!editingItem) return;
     await api.updateItem(editingItem.id, { name, defaultPrice, source, timing, aliases }, isCorrection);
@@ -124,23 +122,6 @@ export default function StatsScreen() {
       await api.updateSource(oldName, newName, aliases);
     }
     setEditingStringEntity(null);
-  };
-
-  const toggleSelection = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      if (next.size === 0) setSelectionMode(false);
-      return next;
-    });
-  };
-
-  const handleLongPress = (id: string) => {
-    if (!selectionMode) {
-      setSelectionMode(true);
-      setSelectedIds(new Set([id]));
-    }
   };
 
   const handleBulkDelete = () => {
@@ -213,87 +194,30 @@ export default function StatsScreen() {
     }
   };
 
-  // --- RENDER HELPERS ---
+  // --- CALLBACKS & DATA DERIVATIONS ---
 
-  const renderItemCard = (item: any) => {
-    const isSelected = selectedIds.has(item.id);
-    const aliases = itemAliasesList?.filter(a => a.itemId === item.id).map(a => a.alias) || [];
-    
-    return (
-      <TouchableOpacity 
-        key={item.id} 
-        style={[styles.itemCard, settings.compactMode && styles.itemCardCompact, isSelected && styles.cardSelected]}
-        onLongPress={() => handleLongPress(item.id)}
-        onPress={() => selectionMode ? toggleSelection(item.id) : null}
-        activeOpacity={0.8}
-        disabled={!selectionMode && !isSelected && false /* meaning it's always touchable to start selection */}
-      >
-        <View style={styles.cardContentWrapper}>
-          <View style={[styles.itemHeader, settings.compactMode && styles.itemHeaderCompact]}>
-            <View style={{ alignItems: 'flex-start', flexShrink: 1, marginEnd: 10 }}>
-              <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.itemName, settings.compactMode && styles.itemNameCompact]}>{item.name}</Text>
-              {aliases.length > 0 && <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.aliasesText, settings.compactMode && styles.textExtraSmall]}>{t('people.aka')} {aliases.join(', ')}</Text>}
-            </View>
-            {!selectionMode && (
-              <TouchableOpacity onPress={() => handleEditClick(item)} style={[styles.iconBtn, settings.compactMode && styles.paddingSmall]}>
-                <FontAwesome name="pencil" size={settings.compactMode ? 14 : 18} color={ACCENT_GOLD} />
-              </TouchableOpacity>
-            )}
-          </View>
-          <View style={[styles.itemDetails, settings.compactMode && styles.itemDetailsCompact, { alignItems: 'flex-start' }]}>
-            <Text style={[styles.detailText, settings.compactMode && styles.textExtraSmall]}>{t('stats.detailsPrice')} {item.defaultPrice ? `$${item.defaultPrice}` : t('stats.na')}</Text>
-            <Text style={[styles.detailText, settings.compactMode && styles.textExtraSmall]}>{t('stats.detailsSource')} {item.source || t('stats.na')}</Text>
-            <Text style={[styles.detailText, settings.compactMode && styles.textExtraSmall]}>{t('stats.detailsTiming')} {item.timing || t('stats.na')}</Text>
-          </View>
-        </View>
+  const toggleSelection = React.useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      if (next.size === 0) setSelectionMode(false);
+      return next;
+    });
+  }, []);
 
-        {selectionMode && (
-          <View style={styles.checkboxContainer}>
-            <FontAwesome name={isSelected ? "check-circle" : "circle-thin"} size={24} color={isSelected ? ACCENT_GOLD : "#888"} />
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
+  const handleLongPress = React.useCallback((id: string) => {
+    if (!selectionMode) {
+      setSelectionMode(true);
+      setSelectedIds(new Set([id]));
+    }
+  }, [selectionMode]);
 
-  const renderStringEntityCard = (name: string, type: 'Place' | 'Source') => {
-    const isSelected = selectedIds.has(name);
-    let aliases: string[] = [];
-    if (type === 'Place') aliases = placeAliasesList?.filter(a => a.placeName === name).map(a => a.alias) || [];
-    else aliases = sourceAliasesList?.filter(a => a.sourceName === name).map(a => a.alias) || [];
+  const handleEditClick = React.useCallback((item: any) => {
+    setEditingItem(item);
+  }, []);
 
-    return (
-      <TouchableOpacity 
-        key={name} 
-        style={[styles.itemCard, settings.compactMode && styles.itemCardCompact, isSelected && styles.cardSelected]}
-        onLongPress={() => handleLongPress(name)}
-        onPress={() => selectionMode ? toggleSelection(name) : null}
-        activeOpacity={0.8}
-      >
-        <View style={styles.cardContentWrapper}>
-          <View style={[styles.itemHeader, settings.compactMode && styles.itemHeaderCompact]}>
-            <View style={{ alignItems: 'flex-start', flexShrink: 1, marginEnd: 10 }}>
-              <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.itemName, settings.compactMode && styles.itemNameCompact]}>{name}</Text>
-              {aliases.length > 0 && <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.aliasesText, settings.compactMode && styles.textExtraSmall]}>{t('people.aka')} {aliases.join(', ')}</Text>}
-            </View>
-            {!selectionMode && (
-              <TouchableOpacity onPress={() => setEditingStringEntity({ type, name })} style={[styles.iconBtn, settings.compactMode && styles.paddingSmall]}>
-                <FontAwesome name="pencil" size={settings.compactMode ? 14 : 18} color={ACCENT_GOLD} />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        {selectionMode && (
-          <View style={styles.checkboxContainer}>
-            <FontAwesome name={isSelected ? "check-circle" : "circle-thin"} size={24} color={isSelected ? ACCENT_GOLD : "#888"} />
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
-
-  // --- FILTERING ---
+  // --- FILTERING & SORTING ---
 
   const sortedItems = useMemo(() => {
     if (!catalog) return [];
@@ -371,12 +295,67 @@ export default function StatsScreen() {
     return [source, ...aliases].join(' ').toLowerCase().includes(q);
   });
 
-  return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}>
-      <ScrollView 
-        contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact]}
-        keyboardShouldPersistTaps="handled"
-      >
+  const listData = useMemo(() => {
+    if (activeTab === 'Items') return filteredItems;
+    if (activeTab === 'Places') return filteredPlaces;
+    return filteredSources;
+  }, [activeTab, filteredItems, filteredPlaces, filteredSources]);
+
+  const renderDictionaryItem = React.useCallback(({ item }: { item: any }) => {
+    if (activeTab === 'Items') {
+      const isSelected = selectedIds.has(item.id);
+      const aliases = itemAliasesList?.filter(a => a.itemId === item.id).map(a => a.alias) || [];
+      return (
+        <ItemCard
+          item={item}
+          isSelected={isSelected}
+          aliases={aliases}
+          compactMode={settings.compactMode}
+          selectionMode={selectionMode}
+          onLongPress={handleLongPress}
+          onPress={(id) => selectionMode ? toggleSelection(id) : null}
+          onEdit={handleEditClick}
+          t={t}
+        />
+      );
+    } else {
+      const isSelected = selectedIds.has(item);
+      const aliases = activeTab === 'Places'
+        ? placeAliasesList?.filter(a => a.placeName === item).map(a => a.alias) || []
+        : sourceAliasesList?.filter(a => a.sourceName === item).map(a => a.alias) || [];
+      return (
+        <StringEntityCard
+          name={item}
+          type={activeTab === 'Places' ? 'Place' : 'Source'}
+          isSelected={isSelected}
+          aliases={aliases}
+          compactMode={settings.compactMode}
+          selectionMode={selectionMode}
+          onLongPress={handleLongPress}
+          onPress={(name) => selectionMode ? toggleSelection(name) : null}
+          onEdit={setEditingStringEntity}
+          t={t}
+        />
+      );
+    }
+  }, [
+    activeTab,
+    selectedIds,
+    settings.compactMode,
+    selectionMode,
+    itemAliasesList,
+    placeAliasesList,
+    sourceAliasesList,
+    t,
+    handleLongPress,
+    toggleSelection,
+    handleEditClick,
+    setEditingStringEntity
+  ]);
+
+  const renderHeader = React.useCallback(() => {
+    return (
+      <View>
         {isSearching && (
           <TouchableOpacity 
             style={[styles.exitSearchBtn, settings.compactMode && styles.exitSearchBtnCompact]} 
@@ -517,12 +496,40 @@ export default function StatsScreen() {
             {t('stats.helperText')}
           </Text>
         )}
+      </View>
+    );
+  }, [
+    isSearching,
+    stats,
+    selectionMode,
+    selectedIds.size,
+    searchQuery,
+    activeTab,
+    itemSort,
+    placeSort,
+    sourceSort,
+    sortOrder,
+    settings.compactMode,
+    t,
+    isRTL,
+    toggleSort,
+    handleBulkDelete,
+  ]);
 
-        {activeTab === 'Items' && filteredItems.map(renderItemCard)}
-        {activeTab === 'Places' && filteredPlaces.map(p => renderStringEntityCard(p, 'Place'))}
-        {activeTab === 'Sources' && filteredSources.map(s => renderStringEntityCard(s, 'Source'))}
+  const keyExtractor = React.useCallback((item: any) => {
+    return activeTab === 'Items' ? item.id : item;
+  }, [activeTab]);
 
-      </ScrollView>
+  return (
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}>
+      <FlatList 
+        data={listData}
+        renderItem={renderDictionaryItem}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={renderHeader}
+        contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact, { paddingBottom: 100 }]}
+        keyboardShouldPersistTaps="handled"
+      />
 
       {editingItem && (
         <CreateItemModal
@@ -647,4 +654,121 @@ const styles = StyleSheet.create({
   sortBtnText: { color: '#888', fontSize: 12, fontWeight: '600' },
   sortBtnTextActive: { color: '#fff' },
   dictionarySearchRow: { marginBottom: 8 },
+});
+
+// ==========================================
+// MEMOIZED PERFORMANCE-OPTIMIZED SUBCOMPONENTS
+// ==========================================
+
+interface ItemCardProps {
+  item: any;
+  isSelected: boolean;
+  aliases: string[];
+  compactMode: boolean;
+  selectionMode: boolean;
+  onLongPress: (id: string) => void;
+  onPress: (id: string) => void;
+  onEdit: (item: any) => void;
+  t: (key: string, params?: any) => string;
+}
+
+const ItemCard = React.memo(function ItemCard({
+  item,
+  isSelected,
+  aliases,
+  compactMode,
+  selectionMode,
+  onLongPress,
+  onPress,
+  onEdit,
+  t,
+}: ItemCardProps) {
+  return (
+    <TouchableOpacity 
+      style={[styles.itemCard, compactMode && styles.itemCardCompact, isSelected && styles.cardSelected]}
+      onLongPress={() => onLongPress(item.id)}
+      onPress={() => onPress(item.id)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.cardContentWrapper}>
+        <View style={[styles.itemHeader, compactMode && styles.itemHeaderCompact]}>
+          <View style={{ alignItems: 'flex-start', flexShrink: 1, marginEnd: 10 }}>
+            <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.itemName, compactMode && styles.itemNameCompact]}>{item.name}</Text>
+            {aliases.length > 0 && <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.aliasesText, compactMode && styles.textExtraSmall]}>{t('people.aka')} {aliases.join(', ')}</Text>}
+          </View>
+          {!selectionMode && (
+            <TouchableOpacity onPress={() => onEdit(item)} style={[styles.iconBtn, compactMode && styles.paddingSmall]}>
+              <FontAwesome name="pencil" size={compactMode ? 14 : 18} color={ACCENT_GOLD} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={[styles.itemDetails, compactMode && styles.itemDetailsCompact, { alignItems: 'flex-start' }]}>
+          <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsPrice')} {item.defaultPrice ? `$${item.defaultPrice}` : t('stats.na')}</Text>
+          <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsSource')} {item.source || t('stats.na')}</Text>
+          <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsTiming')} {item.timing || t('stats.na')}</Text>
+        </View>
+      </View>
+
+      {selectionMode && (
+        <View style={styles.checkboxContainer}>
+          <FontAwesome name={isSelected ? "check-circle" : "circle-thin"} size={24} color={isSelected ? ACCENT_GOLD : "#888"} />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+});
+
+interface StringEntityCardProps {
+  name: string;
+  type: 'Place' | 'Source';
+  isSelected: boolean;
+  aliases: string[];
+  compactMode: boolean;
+  selectionMode: boolean;
+  onLongPress: (name: string) => void;
+  onPress: (name: string) => void;
+  onEdit: (entity: { type: 'Place' | 'Source', name: string }) => void;
+  t: (key: string, params?: any) => string;
+}
+
+const StringEntityCard = React.memo(function StringEntityCard({
+  name,
+  type,
+  isSelected,
+  aliases,
+  compactMode,
+  selectionMode,
+  onLongPress,
+  onPress,
+  onEdit,
+  t,
+}: StringEntityCardProps) {
+  return (
+    <TouchableOpacity 
+      style={[styles.itemCard, compactMode && styles.itemCardCompact, isSelected && styles.cardSelected]}
+      onLongPress={() => onLongPress(name)}
+      onPress={() => onPress(name)}
+      activeOpacity={0.8}
+    >
+      <View style={styles.cardContentWrapper}>
+        <View style={[styles.itemHeader, compactMode && styles.itemHeaderCompact]}>
+          <View style={{ alignItems: 'flex-start', flexShrink: 1, marginEnd: 10 }}>
+            <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.itemName, compactMode && styles.itemNameCompact]}>{name}</Text>
+            {aliases.length > 0 && <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.aliasesText, compactMode && styles.textExtraSmall]}>{t('people.aka')} {aliases.join(', ')}</Text>}
+          </View>
+          {!selectionMode && (
+            <TouchableOpacity onPress={() => onEdit({ type, name })} style={[styles.iconBtn, compactMode && styles.paddingSmall]}>
+              <FontAwesome name="pencil" size={compactMode ? 14 : 18} color={ACCENT_GOLD} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {selectionMode && (
+        <View style={styles.checkboxContainer}>
+          <FontAwesome name={isSelected ? "check-circle" : "circle-thin"} size={24} color={isSelected ? ACCENT_GOLD : "#888"} />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 });
