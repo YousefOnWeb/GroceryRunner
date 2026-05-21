@@ -14,12 +14,13 @@ import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
+import { eq } from 'drizzle-orm';
 
 import { ACCENT_GOLD, GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, METALLIC_BEVEL } from '@/constants/Colors';
 // -----------------------
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Alert, AppState, I18nManager, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import { Alert, AppState, I18nManager, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, FlatList } from 'react-native';
 
 const getHardwareInfo = () => {
   return {
@@ -118,8 +119,26 @@ export default function TheRunScreen() {
     }
   });
 
-  const { data: allOrders } = useLiveQuery(db.select().from(orders));
-  const { data: allOrderItems } = useLiveQuery(db.select().from(orderItems));
+  const targetDateDb = getLocalDateString(targetDate);
+
+  const { data: allOrders } = useLiveQuery(
+    db.select().from(orders).where(eq(orders.targetDate, targetDateDb)),
+    [targetDateDb]
+  );
+  const { data: allOrderItems } = useLiveQuery(
+    db.select({
+      id: orderItems.id,
+      orderId: orderItems.orderId,
+      itemId: orderItems.itemId,
+      quantity: orderItems.quantity,
+      unitPrice: orderItems.unitPrice,
+      isPaid: orderItems.isPaid,
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orderItems.orderId, orders.id))
+    .where(eq(orders.targetDate, targetDateDb)),
+    [targetDateDb]
+  );
   const { data: catalog } = useLiveQuery(db.select().from(items));
   const { data: people } = useLiveQuery(db.select().from(persons));
 
@@ -279,10 +298,260 @@ export default function TheRunScreen() {
     };
   }, [allOrders, allOrderItems, catalog, people, targetDate, settings.groupByFreshness, settings.locationOrder, settings.sourceOrder, targetDate, refreshKey]);
 
+  const flatListData = useMemo(() => {
+    const list: any[] = [];
+
+    if (isSearching) {
+      list.push({ type: 'exit-search', id: 'exit-search' });
+    }
+
+    if (!isSearching) {
+      list.push({ type: 'shopping-header', id: 'shopping-header', listTotal });
+
+      Object.entries(aggregatedItems).forEach(([timingKey, sources]) => {
+        if (settings.groupByFreshness && timingKey !== '_all') {
+          list.push({ type: 'shopping-timing', id: `timing-${timingKey}`, timingKey });
+        }
+        Object.entries(sources).forEach(([source, itemsList]) => {
+          const sourceKey = `${timingKey}-${source}`;
+          list.push({
+            type: 'shopping-source',
+            id: `source-${sourceKey}`,
+            source,
+            itemsList,
+            sourceKey,
+          });
+        });
+      });
+
+      list.push({ type: 'separator', id: 'shopping-separator' });
+    }
+
+    list.push({ type: 'deliveries-header', id: 'deliveries-header' });
+
+    let totalFoundOrders = 0;
+    peopleOrders.forEach((group) => {
+      const q = searchQuery.toLowerCase().trim();
+      const filteredOrders = !q ? group.orders : group.orders.filter(po => {
+        const itemNames = po.items.map(i => i.itemDef?.name || '').join(' ');
+        const searchString = [
+          po.person.name,
+          po.deliveryPlace,
+          itemNames,
+          po.totalCost.toFixed(2)
+        ].join(' ').toLowerCase();
+        return searchString.includes(q);
+      });
+
+      if (filteredOrders.length > 0) {
+        list.push({
+          type: 'location-header',
+          id: `location-${group.location}`,
+          location: group.location,
+        });
+
+        const isCollapsed = collapsedLocations[group.location];
+        if (!isCollapsed) {
+          filteredOrders.forEach((po) => {
+            totalFoundOrders++;
+            list.push({
+              type: 'order-card',
+              id: `order-${po.order.id}`,
+              po,
+            });
+          });
+        }
+      }
+    });
+
+    if (peopleOrders.length === 0 && !isSearching) {
+      list.push({ type: 'empty-deliveries', id: 'empty-deliveries' });
+    }
+
+    const q = searchQuery.toLowerCase().trim();
+    if (q && totalFoundOrders === 0) {
+      list.push({ type: 'no-results', id: 'no-results' });
+    }
+
+    return list;
+  }, [
+    isSearching,
+    listTotal,
+    aggregatedItems,
+    settings.groupByFreshness,
+    peopleOrders,
+    searchQuery,
+    collapsedLocations,
+    collapsedSources,
+    selectedOrders,
+    selectionMode,
+    checkedItems,
+  ]);
+
+  const renderFlatItem = React.useCallback(({ item }: { item: any }) => {
+    switch (item.type) {
+      case 'exit-search':
+        return (
+          <TouchableOpacity
+            style={[styles.exitSearchBtn, settings.compactMode && styles.exitSearchBtnCompact]}
+            onPress={() => {
+              setIsSearching(false);
+              setSearchQuery('');
+              Keyboard.dismiss();
+            }}
+          >
+            <FontAwesome name={I18nManager.isRTL ? "chevron-right" : "chevron-left"} size={settings.compactMode ? 12 : 14} color={ACCENT_GOLD} />
+            <Text style={[styles.exitSearchText, settings.compactMode && styles.textSmall]}>{t('run.exitSearch')}</Text>
+          </TouchableOpacity>
+        );
+      case 'shopping-header':
+        return (
+          <LinearGradient
+            colors={METALLIC_BEVEL}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.shoppingListStripOuter}
+          >
+            <LinearGradient
+              colors={LIQUID_GOLD_STOPS}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.shoppingListStripInner}
+            >
+              <Text style={[styles.shoppingListTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.shoppingList')}</Text>
+              {item.listTotal > 0 && (
+                <Text style={[styles.shoppingListTotal, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>${item.listTotal.toFixed(2)}</Text>
+              )}
+            </LinearGradient>
+          </LinearGradient>
+        );
+      case 'shopping-timing':
+        return (
+          <Text style={[styles.timingTitle, settings.compactMode && styles.timingTitleCompact]}>{item.timingKey}</Text>
+        );
+      case 'shopping-source': {
+        const sourceTotal = getSourceTotal(item.itemsList);
+        const isCollapsed = collapsedSources[item.sourceKey];
+        return (
+          <SourceGroupCard
+            source={item.source}
+            itemsList={item.itemsList}
+            sourceTotal={sourceTotal}
+            isCollapsed={isCollapsed}
+            checkedItems={checkedItems}
+            compactMode={settings.compactMode}
+            isRTL={isRTL}
+            onToggleCollapse={() => toggleSourceCollapse(item.sourceKey)}
+            onToggleCheck={toggleCheck}
+          />
+        );
+      }
+      case 'separator':
+        return <View style={styles.separator} />;
+      case 'deliveries-header':
+        return (
+          <View style={[styles.deliveriesHeader, settings.compactMode && styles.deliveriesHeaderCompact]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <FontAwesome name="truck" size={settings.compactMode ? 18 : 22} color={ACCENT_GOLD} />
+              <Text style={[styles.sectionTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.deliveries')}</Text>
+            </View>
+            <TextInput
+              style={[styles.searchInput, settings.compactMode && styles.searchInputCompact]}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => setIsSearching(true)}
+              onBlur={() => { if (!searchQuery) setIsSearching(false); }}
+              placeholder={t('run.searchPerson')}
+              placeholderTextColor="#888"
+            />
+          </View>
+        );
+      case 'location-header': {
+        const isCollapsed = collapsedLocations[item.location];
+        return (
+          <TouchableOpacity
+            style={[styles.locationHeaderRow, settings.compactMode && styles.locationHeaderRowCompact]}
+            onPress={() => toggleLocationCollapse(item.location)}
+            activeOpacity={0.7}>
+            <FontAwesome
+              name={isCollapsed ? 'caret-right' : 'caret-down'}
+              size={settings.compactMode ? 16 : 20}
+              color={LIGHT_GOLD}
+              style={{ width: 20 }}
+            />
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[styles.deliveryLocationTitle, settings.compactMode && styles.deliveryLocationTitleCompact, { flex: 1 }]}>
+              📍 {item.location}
+            </Text>
+          </TouchableOpacity>
+        );
+      }
+      case 'order-card': {
+        const po = item.po;
+        const isSelected = selectedOrders.has(po.order.id);
+        return (
+          <PersonOrderCard
+            po={po}
+            selectionMode={selectionMode}
+            isSelected={isSelected}
+            compactMode={settings.compactMode}
+            isRTL={isRTL}
+            t={t}
+            onLongPress={(orderId) => {
+              if (!selectionMode) {
+                setSelectionMode(true);
+                setSelectedOrders(new Set([orderId]));
+              }
+            }}
+            onPress={(orderId) => {
+              if (selectionMode) {
+                toggleOrderSelection(orderId);
+              }
+            }}
+            onEdit={handleEditOrder}
+            onDelete={handleDeleteOrder}
+            onPayAmount={setPayAmountOrder}
+            onMarkPaid={handleMarkAllPaid}
+            onMarkUnpaid={handleMarkAllUnpaid}
+            onUnknownPrice={setUnknownPricePerson}
+            onHistory={setLogPerson}
+          />
+        );
+      }
+      case 'empty-deliveries':
+        return (
+          <Text style={[styles.emptyText, settings.compactMode && styles.textSmall, { textAlign: 'center', marginTop: 20 }]}>
+            {t('run.noDeliveries')}
+          </Text>
+        );
+      case 'no-results':
+        return (
+          <View style={styles.noResultsContainer}>
+            <FontAwesome name="search" size={48} color="#444" style={{ marginBottom: 10 }} />
+            <Text style={styles.noResultsText}>{t('run.noOrdersFound', { query: searchQuery })}</Text>
+          </View>
+        );
+      default:
+        return null;
+    }
+  }, [
+    isSearching,
+    searchQuery,
+    collapsedLocations,
+    collapsedSources,
+    selectedOrders,
+    selectionMode,
+    checkedItems,
+    settings.compactMode,
+    isRTL,
+    t,
+  ]);
+
   const toggleCheck = (itemId: string) => {
     setCheckedItems((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
   };
-
 
   const handleMarkAllPaid = async (orderId: string, personId: string) => {
     try {
@@ -616,397 +885,14 @@ export default function TheRunScreen() {
         />
       )}
 
-      <ScrollView
+      <FlatList
+        data={flatListData}
+        renderItem={renderFlatItem}
+        keyExtractor={(item) => item.id}
         style={styles.container}
         contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact, { paddingBottom: 100 }]}
         keyboardShouldPersistTaps="handled"
-      >
-        {isSearching && (
-          <TouchableOpacity
-            style={[styles.exitSearchBtn, settings.compactMode && styles.exitSearchBtnCompact]}
-            onPress={() => {
-              setIsSearching(false);
-              setSearchQuery('');
-              Keyboard.dismiss();
-            }}
-          >
-            <FontAwesome name={I18nManager.isRTL ? "chevron-right" : "chevron-left"} size={settings.compactMode ? 12 : 14} color={ACCENT_GOLD} />
-            <Text style={[styles.exitSearchText, settings.compactMode && styles.textSmall]}>{t('run.exitSearch')}</Text>
-          </TouchableOpacity>
-        )}
-
-        {!isSearching && (
-          <LinearGradient
-            colors={METALLIC_BEVEL}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={styles.shoppingListStripOuter}
-          >
-            <LinearGradient
-              colors={LIQUID_GOLD_STOPS}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.shoppingListStripInner}
-            >
-              <Text style={[styles.shoppingListTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.shoppingList')}</Text>
-              {listTotal > 0 && (
-                <Text style={[styles.shoppingListTotal, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>${listTotal.toFixed(2)}</Text>
-              )}
-            </LinearGradient>
-          </LinearGradient>
-        )}
-
-        {!isSearching && Object.entries(aggregatedItems).map(([timingKey, sources]) => (
-          <View key={timingKey} style={styles.timingGroup}>
-            {settings.groupByFreshness && timingKey !== '_all' && (
-              <Text style={[styles.timingTitle, settings.compactMode && styles.timingTitleCompact]}>{timingKey}</Text>
-            )}
-            {Object.entries(sources).map(([source, itemsList]) => {
-              const sourceTotal = getSourceTotal(itemsList);
-              const sourceKey = `${timingKey}-${source}`;
-              const isCollapsed = collapsedSources[sourceKey];
-
-              return (
-                <View key={source} style={styles.cardShadow}>
-                  <View style={[styles.sourceGroup, settings.compactMode && styles.sourceGroupCompact]}>
-                    <TouchableOpacity
-                      style={[styles.sourceHeader, settings.compactMode && styles.sourceHeaderCompact]}
-                      onPress={() => toggleSourceCollapse(sourceKey)}
-                      activeOpacity={0.7}>
-                      <View style={[styles.sourceTitleRow, { flex: 1 }]}>
-                        <FontAwesome
-                          name={isCollapsed ? 'caret-right' : 'caret-down'}
-                          size={settings.compactMode ? 14 : 16}
-                          color="#888"
-                          style={{ width: 15 }}
-                        />
-                        <Text
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                          style={[styles.sourceTitle, settings.compactMode && styles.sourceTitleCompact, { flex: 1 }]}>
-                          📍 {source}
-                        </Text>
-                      </View>
-                      <Text style={[styles.sourceCost, settings.compactMode && styles.sourceTitleCompact]}>${sourceTotal.toFixed(2)}</Text>
-                    </TouchableOpacity>
-
-                    {!isCollapsed && itemsList.map((ag) => (
-                      <TouchableOpacity
-                        key={ag.item.id}
-                        style={[styles.itemRow, settings.compactMode && styles.itemRowCompact]}
-                        onPress={() => toggleCheck(ag.item.id)}>
-                        <FontAwesome
-                          name={checkedItems[ag.item.id] ? 'check-square' : 'square-o'}
-                          size={settings.compactMode ? 20 : 24}
-                          color={checkedItems[ag.item.id] ? ACCENT_GOLD : ACCENT_GOLD}
-                        />
-                        <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', gap: 8, overflow: 'hidden', marginStart: 10 }}>
-                          <View style={[styles.quantityBadge, settings.compactMode && styles.quantityBadgeCompact, checkedItems[ag.item.id] && styles.quantityBadgeCrossed]}>
-                            <Text style={[styles.quantityText, settings.compactMode && styles.quantityTextCompact, checkedItems[ag.item.id] && styles.quantityTextCrossed]}>
-                              x{ag.totalQuantity}
-                            </Text>
-                          </View>
-                          <Text
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                            style={[
-                              styles.itemText,
-                              settings.compactMode && styles.itemTextCompact,
-                              checkedItems[ag.item.id] && styles.itemTextCrossed,
-                              { flexShrink: 1, marginStart: 0 }
-                            ]}>
-                            {isRTL ? '\u200F' : ''}{ag.item.name}
-                          </Text>
-                        </View>
-                        <View style={styles.itemPriceContainer}>
-                          {ag.totalCost > 0 && (
-                            <Text style={[
-                              styles.itemPrice,
-                              settings.compactMode && styles.textSmall,
-                              checkedItems[ag.item.id] && styles.itemTextCrossed,
-                            ]}>
-                              ${ag.totalCost.toFixed(2)}
-                            </Text>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        ))}
-
-        {!isSearching && <View style={styles.separator} />}
-
-        <View style={[styles.deliveriesHeader, settings.compactMode && styles.deliveriesHeaderCompact]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-            <FontAwesome name="truck" size={settings.compactMode ? 18 : 22} color={ACCENT_GOLD} />
-            <Text style={[styles.sectionTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.deliveries')}</Text>
-          </View>
-          <TextInput
-            style={[styles.searchInput, settings.compactMode && styles.searchInputCompact]}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onFocus={() => setIsSearching(true)}
-            onBlur={() => { if (!searchQuery) setIsSearching(false); }}
-            placeholder={t('run.searchPerson')}
-            placeholderTextColor="#888"
-          />
-        </View>
-
-        {peopleOrders.map((group) => {
-          const q = searchQuery.toLowerCase().trim();
-          const filteredOrders = !q ? group.orders : group.orders.filter(po => {
-            const itemNames = po.items.map(i => i.itemDef?.name || '').join(' ');
-            const searchString = [
-              po.person.name,
-              po.deliveryPlace,
-              itemNames,
-              po.totalCost.toFixed(2)
-            ].join(' ').toLowerCase();
-            return searchString.includes(q);
-          });
-
-          if (filteredOrders.length === 0) return null;
-
-          const isCollapsed = collapsedLocations[group.location];
-          return (
-            <View key={group.location} style={[styles.locationGroup, settings.compactMode && styles.locationGroupCompact]}>
-              <TouchableOpacity
-                style={[styles.locationHeaderRow, settings.compactMode && styles.locationHeaderRowCompact]}
-                onPress={() => toggleLocationCollapse(group.location)}
-                activeOpacity={0.7}>
-                <FontAwesome
-                  name={isCollapsed ? 'caret-right' : 'caret-down'}
-                  size={settings.compactMode ? 16 : 20}
-                  color={LIGHT_GOLD}
-                  style={{ width: 20 }}
-                />
-                <Text
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  style={[styles.deliveryLocationTitle, settings.compactMode && styles.deliveryLocationTitleCompact, { flex: 1 }]}>
-                  📍 {group.location}
-                </Text>
-              </TouchableOpacity>
-
-              {!isCollapsed && filteredOrders.map((po) => (
-                <View key={po.person.id} style={styles.cardShadow}>
-                  <View style={[styles.personCard, settings.compactMode && styles.personCardCompact, selectionMode && selectedOrders.has(po.order.id) && { borderColor: ACCENT_GOLD, borderWidth: 1 }]}>
-                    <View style={[styles.personBody, settings.compactMode && styles.personBodyCompact]}>
-                      <TouchableOpacity
-                        activeOpacity={0.8}
-                        onLongPress={() => {
-                          if (!selectionMode) {
-                            setSelectionMode(true);
-                            setSelectedOrders(new Set([po.order.id]));
-                          }
-                        }}
-                        onPress={() => {
-                          if (selectionMode) {
-                            toggleOrderSelection(po.order.id);
-                          }
-                        }}
-                        style={[styles.personHeader, settings.compactMode && styles.personHeaderCompact, selectionMode && selectedOrders.has(po.order.id) && { backgroundColor: 'rgba(47, 149, 220, 0.15)' }]}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                          {selectionMode && (
-                            <FontAwesome
-                              name={selectedOrders.has(po.order.id) ? 'check-square-o' : 'square-o'}
-                              size={settings.compactMode ? 20 : 24}
-                              color={selectedOrders.has(po.order.id) ? ACCENT_GOLD : '#888'}
-                              style={{ marginEnd: 10 }}
-                            />
-                          )}
-                          <View style={{ flex: 1, alignItems: 'flex-start', overflow: 'hidden', paddingEnd: 8 }}>
-                            <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.personName, settings.compactMode && styles.personNameCompact, { textAlign: I18nManager.isRTL ? 'right' : 'left' }]}>{po.person.name}</Text>
-                            {po.deliveryPlace ? (
-                              <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.deliveryPlace, settings.compactMode && styles.textExtraSmall, { textAlign: I18nManager.isRTL ? 'right' : 'left' }]}>📍 {po.deliveryPlace}</Text>
-                            ) : null}
-                          </View>
-                        </View>
-                        <View style={styles.costInfo}>
-                          <View style={styles.orderActions}>
-                            {!selectionMode && (
-                              <View style={{ flexDirection: 'row', gap: 15 }}>
-                                <TouchableOpacity onPress={() => handleEditOrder(po.order, po.person)} style={styles.editOrderBtn}>
-                                  <FontAwesome name="edit" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} />
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleDeleteOrder(po.order.id, po.person.name, po.order.isPaid)} style={styles.deleteOrderBtn}>
-                                  <FontAwesome name="trash" size={settings.compactMode ? 14 : 16} color="#ff4444" />
-                                </TouchableOpacity>
-                              </View>
-                            )}
-                            <Text style={[styles.personTotal, settings.compactMode && styles.personTotalCompact]}>
-                              ${po.totalCost.toFixed(2)}{po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}
-                            </Text>
-                          </View>
-                          <View style={[styles.statusContainer, settings.compactMode && { height: 16 }]}>
-                            <Text style={[styles.statusText, po.unpaidCost > 0 ? styles.statusUnpaid : styles.statusPaid, settings.compactMode && styles.textExtraSmall]}>
-                              {po.hasUnknownPriceItems ? t('run.statusAwaitingPrices') : po.unpaidCost > 0 ? t('run.statusUnpaid') : t('run.statusPaid')}
-                            </Text>
-                          </View>
-                        </View>
-                      </TouchableOpacity>
-
-                      <View style={styles.personItems}>
-                        {po.items.map((i) => {
-                          const itemCost = (i.unitPrice ?? 0) * i.quantity;
-                          return (
-                            <View key={i.id} style={[styles.itemRow2, settings.compactMode && styles.itemRow2Compact]}>
-                              {/* Individual item checkbox removed as requested */}
-                              <View style={[styles.itemInfo, { alignItems: 'center', flexDirection: 'row', gap: 8, flexShrink: 1, overflow: 'hidden' }]}>
-                                <View style={[styles.quantityBadge, settings.compactMode && styles.quantityBadgeCompact, i.isPaid && styles.quantityBadgeCrossed]}>
-                                  <Text style={[styles.quantityText, settings.compactMode && styles.quantityTextCompact, i.isPaid && styles.quantityTextCrossed]}>
-                                    x{i.quantity}
-                                  </Text>
-                                </View>
-                                <Text
-                                  numberOfLines={1}
-                                  ellipsizeMode="tail"
-                                  style={[styles.itemText, { flexShrink: 1, marginStart: 0 }, settings.compactMode && styles.textExtraSmall, i.isPaid && styles.personItemPaid]}>
-                                  {isRTL ? '\u200F' : ''}{i.itemDef?.name}
-                                </Text>
-                              </View>
-                              <View style={styles.itemPriceContainer}>
-                                {i.unitPrice === null ? (
-                                  <Text style={[styles.itemPrice, { color: '#ffeb3b', fontStyle: 'italic' }, settings.compactMode && styles.textExtraSmall]}>{t('common.priceTBD')}</Text>
-                                ) : itemCost > 0 ? (
-                                  <Text style={[styles.itemPrice, settings.compactMode && styles.textExtraSmall, i.isPaid && styles.personItemPaid]}>${itemCost.toFixed(2)}</Text>
-                                ) : null}
-                              </View>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </View>
-
-                    <View style={[
-                      styles.personFooter,
-                      settings.compactMode && styles.personFooterCompact,
-                      po.person.balance < 0 ? styles.footerDebt : po.person.balance > 0 ? styles.footerCredit : null
-                    ]}>
-                      <View>
-                        <View style={styles.balanceHeaderRow}>
-                          <Text style={[styles.balanceLabel, settings.compactMode && styles.textExtraSmall, po.person.balance < 0 ? styles.debtLabel : po.person.balance > 0 ? styles.creditLabel : po.hasUnknownPriceItems ? styles.pendingLabel : styles.settledLabel]}>
-                            {po.person.balance < 0
-                              ? t('run.debtLabel')
-                              : po.person.balance > 0
-                                ? t('run.creditLabel')
-                                : po.hasUnknownPriceItems
-                                  ? t('run.pendingLabel')
-                                  : t('run.settledLabel')}
-                          </Text>
-                          {po.hasUnknownPriceItems && (
-                            <TouchableOpacity
-                              onPress={() => setUnknownPricePerson({ id: po.person.id, name: po.person.name })}
-                              style={[styles.notesBtn, settings.compactMode && styles.paddingSmall]}>
-                              <FontAwesome name="exclamation-circle" size={settings.compactMode ? 14 : 18} color="#ff9800" />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                        <View style={styles.balanceValueRow}>
-                          <Text style={[po.person.balance < 0 ? styles.debt : po.person.balance > 0 ? styles.credit : po.hasUnknownPriceItems ? styles.pending : styles.settled, settings.compactMode && styles.personTotalCompact]}>
-                            ${Math.abs(po.person.balance).toFixed(2)}
-                          </Text>
-                          <TouchableOpacity
-                            onPress={() => setLogPerson({ id: po.person.id, name: po.person.name })}
-                            style={[styles.historyBtn, settings.compactMode && styles.paddingSmall]}
-                          >
-                            <FontAwesome name="history" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      <View style={styles.buttonGroup}>
-                        {po.hasUnpaidItems ? (
-                          <View style={{ flexDirection: 'row', gap: 8 }}>
-                            <TouchableOpacity
-                              onPress={() => setPayAmountOrder({ id: po.order.id, personId: po.person.id, total: po.totalCost, personName: po.person.name })}>
-                              <View style={styles.paymentShadow}>
-                                <LinearGradient
-                                  colors={METALLIC_BEVEL}
-                                  start={{ x: 0.5, y: 0 }}
-                                  end={{ x: 0.5, y: 1 }}
-                                  style={[styles.paymentBtnOuter, settings.compactMode && { borderRadius: 5 }]}
-                                >
-                                  <LinearGradient
-                                    colors={LIQUID_GOLD_STOPS}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={[styles.paymentBtnInner, settings.compactMode && styles.compactBtn]}
-                                  >
-                                    <Text style={[styles.markAllPaidText, settings.compactMode && styles.textExtraSmall]}>{t('run.payAmountTitle')}</Text>
-                                  </LinearGradient>
-                                </LinearGradient>
-                              </View>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => handleMarkAllPaid(po.order.id, po.person.id)}>
-                              <View style={styles.paymentShadow}>
-                                <LinearGradient
-                                  colors={METALLIC_BEVEL}
-                                  start={{ x: 0.5, y: 0 }}
-                                  end={{ x: 0.5, y: 1 }}
-                                  style={[styles.paymentBtnOuter, settings.compactMode && { borderRadius: 5 }]}
-                                >
-                                  <LinearGradient
-                                    colors={LIQUID_GOLD_STOPS}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={[styles.paymentBtnInner, settings.compactMode && styles.compactBtn]}
-                                  >
-                                    <Text style={[styles.markAllPaidText, settings.compactMode && styles.textExtraSmall]}>{t('run.markPaid')}</Text>
-                                  </LinearGradient>
-                                </LinearGradient>
-                              </View>
-                            </TouchableOpacity>
-                          </View>
-                        ) : (
-                          <TouchableOpacity
-                            style={[styles.markAllUnpaidBtn, settings.compactMode && styles.compactBtn]}
-                            onPress={() => handleMarkAllUnpaid(po.order.id, po.person.id)}>
-                            <Text style={[styles.markAllUnpaidText, settings.compactMode && styles.textExtraSmall]}>{t('run.revertLastPayment')}</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </View>
-          );
-        })}
-
-        {peopleOrders.length === 0 && !isSearching && (
-          <Text style={[styles.emptyText, settings.compactMode && styles.textSmall, { textAlign: 'center', marginTop: 20 }]}>
-            {t('run.noDeliveries')}
-          </Text>
-        )}
-
-        {(() => {
-          const q = searchQuery.toLowerCase().trim();
-          if (!q) return null;
-          const totalFound = peopleOrders.reduce((sum, g) => {
-            return sum + g.orders.filter(po => {
-              const itemNames = po.items.map(i => i.itemDef?.name || '').join(' ');
-              const searchString = [po.person.name, po.deliveryPlace, itemNames, po.totalCost.toFixed(2)].join(' ').toLowerCase();
-              return searchString.includes(q);
-            }).length;
-          }, 0);
-
-          if (totalFound === 0) {
-            return (
-              <View style={styles.noResultsContainer}>
-                <FontAwesome name="search" size={48} color="#444" style={{ marginBottom: 10 }} />
-                <Text style={styles.noResultsText}>{t('run.noOrdersFound', { query: searchQuery })}</Text>
-              </View>
-            );
-          }
-          return null;
-        })()}
-      </ScrollView>
+      />
 
       {unknownPricePerson && (
         <UnknownPriceModal
@@ -1304,4 +1190,333 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
+});
+
+// ==========================================
+// MEMOIZED PERFORMANCE-OPTIMIZED SUBCOMPONENTS
+// ==========================================
+
+interface OrderItemRowProps {
+  item: any;
+  compactMode: boolean;
+  isRTL: boolean;
+  t: (key: string, params?: any) => string;
+}
+
+const OrderItemRow = React.memo(function OrderItemRow({
+  item,
+  compactMode,
+  isRTL,
+  t,
+}: OrderItemRowProps) {
+  const itemCost = (item.unitPrice ?? 0) * item.quantity;
+  return (
+    <View style={[styles.itemRow2, compactMode && styles.itemRow2Compact]}>
+      <View style={[styles.itemInfo, { alignItems: 'center', flexDirection: 'row', gap: 8, flexShrink: 1, overflow: 'hidden' }]}>
+        <View style={[styles.quantityBadge, compactMode && styles.quantityBadgeCompact, item.isPaid && styles.quantityBadgeCrossed]}>
+          <Text style={[styles.quantityText, compactMode && styles.quantityTextCompact, item.isPaid && styles.quantityTextCrossed]}>
+            x{item.quantity}
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={[styles.itemText, { flexShrink: 1, marginStart: 0 }, compactMode && styles.textExtraSmall, item.isPaid && styles.personItemPaid]}>
+          {isRTL ? '\u200F' : ''}{item.itemDef?.name}
+        </Text>
+      </View>
+      <View style={styles.itemPriceContainer}>
+        {item.unitPrice === null ? (
+          <Text style={[styles.itemPrice, { color: '#ffeb3b', fontStyle: 'italic' }, compactMode && styles.textExtraSmall]}>{t('common.priceTBD')}</Text>
+        ) : itemCost > 0 ? (
+          <Text style={[styles.itemPrice, compactMode && styles.textExtraSmall, item.isPaid && styles.personItemPaid]}>${itemCost.toFixed(2)}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+});
+
+interface PersonOrderCardProps {
+  po: any;
+  selectionMode: boolean;
+  isSelected: boolean;
+  compactMode: boolean;
+  isRTL: boolean;
+  t: (key: string, params?: any) => string;
+  onLongPress: (orderId: string) => void;
+  onPress: (orderId: string) => void;
+  onEdit: (order: any, person: any) => void;
+  onDelete: (orderId: string, personName: string, isPaid: boolean) => void;
+  onPayAmount: (payInfo: { id: string; personId: string; total: number; personName: string }) => void;
+  onMarkPaid: (orderId: string, personId: string) => void;
+  onMarkUnpaid: (orderId: string, personId: string) => void;
+  onUnknownPrice: (personInfo: { id: string; name: string }) => void;
+  onHistory: (personInfo: { id: string; name: string }) => void;
+}
+
+const PersonOrderCard = React.memo(function PersonOrderCard({
+  po,
+  selectionMode,
+  isSelected,
+  compactMode,
+  isRTL,
+  t,
+  onLongPress,
+  onPress,
+  onEdit,
+  onDelete,
+  onPayAmount,
+  onMarkPaid,
+  onMarkUnpaid,
+  onUnknownPrice,
+  onHistory,
+}: PersonOrderCardProps) {
+  return (
+    <View style={styles.cardShadow}>
+      <View style={[styles.personCard, compactMode && styles.personCardCompact, selectionMode && isSelected && { borderColor: ACCENT_GOLD, borderWidth: 1 }]}>
+        <View style={[styles.personBody, compactMode && styles.personBodyCompact]}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onLongPress={() => onLongPress(po.order.id)}
+            onPress={() => onPress(po.order.id)}
+            style={[styles.personHeader, compactMode && styles.personHeaderCompact, selectionMode && isSelected && { backgroundColor: 'rgba(47, 149, 220, 0.15)' }]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              {selectionMode && (
+                <FontAwesome
+                  name={isSelected ? 'check-square-o' : 'square-o'}
+                  size={compactMode ? 20 : 24}
+                  color={isSelected ? ACCENT_GOLD : '#888'}
+                  style={{ marginEnd: 10 }}
+                />
+              )}
+              <View style={{ flex: 1, alignItems: 'flex-start', overflow: 'hidden', paddingEnd: 8 }}>
+                <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.personName, compactMode && styles.personNameCompact, { textAlign: isRTL ? 'right' : 'left' }]}>{po.person.name}</Text>
+                {po.deliveryPlace ? (
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.deliveryPlace, compactMode && styles.textExtraSmall, { textAlign: isRTL ? 'right' : 'left' }]}>📍 {po.deliveryPlace}</Text>
+                ) : null}
+              </View>
+            </View>
+            <View style={styles.costInfo}>
+              <View style={styles.orderActions}>
+                {!selectionMode && (
+                  <View style={{ flexDirection: 'row', gap: 15 }}>
+                    <TouchableOpacity onPress={() => onEdit(po.order, po.person)} style={styles.editOrderBtn}>
+                      <FontAwesome name="edit" size={compactMode ? 14 : 16} color={ACCENT_GOLD} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => onDelete(po.order.id, po.person.name, po.order.isPaid)} style={styles.deleteOrderBtn}>
+                      <FontAwesome name="trash" size={compactMode ? 14 : 16} color="#ff4444" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <Text style={[styles.personTotal, compactMode && styles.personTotalCompact]}>
+                  ${po.totalCost.toFixed(2)}{po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}
+                </Text>
+              </View>
+              <View style={[styles.statusContainer, compactMode && { height: 16 }]}>
+                <Text style={[styles.statusText, po.unpaidCost > 0 ? styles.statusUnpaid : styles.statusPaid, compactMode && styles.textExtraSmall]}>
+                  {po.hasUnknownPriceItems ? t('run.statusAwaitingPrices') : po.unpaidCost > 0 ? t('run.statusUnpaid') : t('run.statusPaid')}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.personItems}>
+            {po.items.map((i: any) => (
+              <OrderItemRow
+                key={i.id}
+                item={i}
+                compactMode={compactMode}
+                isRTL={isRTL}
+                t={t}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={[
+          styles.personFooter,
+          compactMode && styles.personFooterCompact,
+          po.person.balance < 0 ? styles.footerDebt : po.person.balance > 0 ? styles.footerCredit : null
+        ]}>
+          <View>
+            <View style={styles.balanceHeaderRow}>
+              <Text style={[styles.balanceLabel, compactMode && styles.textExtraSmall, po.person.balance < 0 ? styles.debtLabel : po.person.balance > 0 ? styles.creditLabel : po.hasUnknownPriceItems ? styles.pendingLabel : styles.settledLabel]}>
+                {po.person.balance < 0
+                  ? t('run.debtLabel')
+                  : po.person.balance > 0
+                    ? t('run.creditLabel')
+                    : po.hasUnknownPriceItems
+                      ? t('run.pendingLabel')
+                      : t('run.settledLabel')}
+              </Text>
+              {po.hasUnknownPriceItems && (
+                <TouchableOpacity
+                  onPress={() => onUnknownPrice({ id: po.person.id, name: po.person.name })}
+                  style={[styles.notesBtn, compactMode && styles.paddingSmall]}>
+                  <FontAwesome name="exclamation-circle" size={compactMode ? 14 : 18} color="#ff9800" />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.balanceValueRow}>
+              <Text style={[po.person.balance < 0 ? styles.debt : po.person.balance > 0 ? styles.credit : po.hasUnknownPriceItems ? styles.pending : styles.settled, compactMode && styles.personTotalCompact]}>
+                ${Math.abs(po.person.balance).toFixed(2)}
+              </Text>
+              <TouchableOpacity
+                onPress={() => onHistory({ id: po.person.id, name: po.person.name })}
+                style={[styles.historyBtn, compactMode && styles.paddingSmall]}
+              >
+                <FontAwesome name="history" size={compactMode ? 14 : 16} color={ACCENT_GOLD} />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.buttonGroup}>
+            {po.hasUnpaidItems ? (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => onPayAmount({ id: po.order.id, personId: po.person.id, total: po.totalCost, personName: po.person.name })}>
+                  <View style={styles.paymentShadow}>
+                    <LinearGradient
+                      colors={METALLIC_BEVEL}
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 1 }}
+                      style={[styles.paymentBtnOuter, compactMode && { borderRadius: 5 }]}
+                    >
+                      <LinearGradient
+                        colors={LIQUID_GOLD_STOPS}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[styles.paymentBtnInner, compactMode && styles.compactBtn]}
+                      >
+                        <Text style={[styles.markAllPaidText, compactMode && styles.textExtraSmall]}>{t('run.payAmountTitle')}</Text>
+                      </LinearGradient>
+                    </LinearGradient>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onMarkPaid(po.order.id, po.person.id)}>
+                  <View style={styles.paymentShadow}>
+                    <LinearGradient
+                      colors={METALLIC_BEVEL}
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 1 }}
+                      style={[styles.paymentBtnOuter, compactMode && { borderRadius: 5 }]}
+                    >
+                      <LinearGradient
+                        colors={LIQUID_GOLD_STOPS}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[styles.paymentBtnInner, compactMode && styles.compactBtn]}
+                      >
+                        <Text style={[styles.markAllPaidText, compactMode && styles.textExtraSmall]}>{t('run.markPaid')}</Text>
+                      </LinearGradient>
+                    </LinearGradient>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.markAllUnpaidBtn, compactMode && styles.compactBtn]}
+                onPress={() => onMarkUnpaid(po.order.id, po.person.id)}>
+                <Text style={[styles.markAllUnpaidText, compactMode && styles.textExtraSmall]}>{t('run.revertLastPayment')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+});
+
+interface SourceGroupCardProps {
+  source: string;
+  itemsList: any[];
+  sourceTotal: number;
+  isCollapsed: boolean;
+  checkedItems: Record<string, boolean>;
+  compactMode: boolean;
+  isRTL: boolean;
+  onToggleCollapse: () => void;
+  onToggleCheck: (itemId: string) => void;
+}
+
+const SourceGroupCard = React.memo(function SourceGroupCard({
+  source,
+  itemsList,
+  sourceTotal,
+  isCollapsed,
+  checkedItems,
+  compactMode,
+  isRTL,
+  onToggleCollapse,
+  onToggleCheck,
+}: SourceGroupCardProps) {
+  return (
+    <View style={styles.cardShadow}>
+      <View style={[styles.sourceGroup, compactMode && styles.sourceGroupCompact]}>
+        <TouchableOpacity
+          style={[styles.sourceHeader, compactMode && styles.sourceHeaderCompact]}
+          onPress={onToggleCollapse}
+          activeOpacity={0.7}>
+          <View style={[styles.sourceTitleRow, { flex: 1 }]}>
+            <FontAwesome
+              name={isCollapsed ? 'caret-right' : 'caret-down'}
+              size={compactMode ? 14 : 16}
+              color="#888"
+              style={{ width: 15 }}
+            />
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[styles.sourceTitle, compactMode && styles.sourceTitleCompact, { flex: 1 }]}>
+              📍 {source}
+            </Text>
+          </View>
+          <Text style={[styles.sourceCost, compactMode && styles.sourceTitleCompact]}>${sourceTotal.toFixed(2)}</Text>
+        </TouchableOpacity>
+
+        {!isCollapsed && itemsList.map((ag) => (
+          <TouchableOpacity
+            key={ag.item.id}
+            style={[styles.itemRow, compactMode && styles.itemRowCompact]}
+            onPress={() => onToggleCheck(ag.item.id)}>
+            <FontAwesome
+              name={checkedItems[ag.item.id] ? 'check-square' : 'square-o'}
+              size={compactMode ? 20 : 24}
+              color={ACCENT_GOLD}
+            />
+            <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', gap: 8, overflow: 'hidden', marginStart: 10 }}>
+              <View style={[styles.quantityBadge, compactMode && styles.quantityBadgeCompact, checkedItems[ag.item.id] && styles.quantityBadgeCrossed]}>
+                <Text style={[styles.quantityText, compactMode && styles.quantityTextCompact, checkedItems[ag.item.id] && styles.quantityTextCrossed]}>
+                  x{ag.totalQuantity}
+                </Text>
+              </View>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[
+                  styles.itemText,
+                  compactMode && styles.itemTextCompact,
+                  checkedItems[ag.item.id] && styles.itemTextCrossed,
+                  { flexShrink: 1, marginStart: 0 }
+                ]}>
+                {isRTL ? '\u200F' : ''}{ag.item.name}
+              </Text>
+            </View>
+            <View style={styles.itemPriceContainer}>
+              {ag.totalCost > 0 && (
+                <Text style={[
+                  styles.itemPrice,
+                  compactMode && styles.textSmall,
+                  checkedItems[ag.item.id] && styles.itemTextCrossed,
+                ]}>
+                  ${ag.totalCost.toFixed(2)}
+                </Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
 });
