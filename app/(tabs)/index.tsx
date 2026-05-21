@@ -13,12 +13,31 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
+import Constants from 'expo-constants';
 
 import { ACCENT_GOLD, GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, METALLIC_BEVEL } from '@/constants/Colors';
 // -----------------------
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Alert, AppState, I18nManager, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+
+const getHardwareInfo = () => {
+  return {
+    os: Platform.OS,
+    osVersion: Platform.Version,
+    deviceName: Constants.deviceName || 'Unknown Device',
+    isDevice: Constants.isDevice,
+    jsEngine: (global as any).HermesInternal ? 'Hermes' : 'JSC',
+  };
+};
+
+const ENABLE_PERF_LOGGING = true; // Set to false to completely disable performance tracing logs
+
+const perfLog = (message: string) => {
+  if (__DEV__ && ENABLE_PERF_LOGGING) {
+    console.log(message);
+  }
+};
 
 export default function TheRunScreen() {
   const [targetDate, setTargetDate] = useState(getDefaultDate());
@@ -45,6 +64,19 @@ export default function TheRunScreen() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [payAmountOrder, setPayAmountOrder] = useState<{ id: string; personId: string; total: number; personName: string } | null>(null);
 
+  // Performance tracking refs
+  const dateChangePerfRef = useRef<{
+    date: string;
+    startTime: number;
+    prevDate: string;
+  } | null>(null);
+  const renderCountRef = useRef(0);
+  renderCountRef.current++;
+
+  const currentRender = renderCountRef.current;
+  const renderStartTime = performance.now();
+  perfLog(`[PERF] [Render Start] Render #${currentRender} started. Target date state: ${getLocalDateString(targetDate)}`);
+
   const { settings } = useSettings();
   const { t, isRTL } = useTranslation();
   const router = useRouter();
@@ -68,21 +100,56 @@ export default function TheRunScreen() {
     return () => subscription.remove();
   }, []);
 
+  // Profile rendering overhead and transition transaction duration
+  useEffect(() => {
+    const renderEndTime = performance.now();
+    const renderDuration = renderEndTime - renderStartTime;
+    perfLog(`[PERF] [Render End] Render #${currentRender} commit/layout finished in ${renderDuration.toFixed(2)}ms.`);
+
+    const targetDateStr = getLocalDateString(targetDate);
+    if (dateChangePerfRef.current && dateChangePerfRef.current.date === targetDateStr) {
+      const totalTime = renderEndTime - dateChangePerfRef.current.startTime;
+      const hw = getHardwareInfo();
+      perfLog(`[PERF] [Complete Transition] Date change completed!
+        - Transition: ${dateChangePerfRef.current.prevDate} -> ${dateChangePerfRef.current.date}
+        - Total duration: ${totalTime.toFixed(2)}ms
+        - System Hardware: OS=${hw.os} (v${hw.osVersion}), Device Model=${hw.deviceName}, JS Engine=${hw.jsEngine}`);
+      dateChangePerfRef.current = null;
+    }
+  });
+
   const { data: allOrders } = useLiveQuery(db.select().from(orders));
   const { data: allOrderItems } = useLiveQuery(db.select().from(orderItems));
   const { data: catalog } = useLiveQuery(db.select().from(items));
   const { data: people } = useLiveQuery(db.select().from(persons));
 
   const { aggregatedItems, peopleOrders, listTotal } = useMemo(() => {
+    const memoStart = performance.now();
     const agg: Record<string, { item: any; totalQuantity: number; totalCost: number }> = {};
     const pOrders: Record<string, { person: any; order: any; items: any[]; totalCost: number; unpaidCost: number; hasUnpaidItems: boolean; hasUnknownPriceItems: boolean; deliveryPlace: string | null }> = {};
 
     if (!allOrders || !allOrderItems || !catalog || !people) {
+      perfLog(`[PERF] [useMemo] DB tables not fully loaded yet inside Render #${renderCountRef.current}`);
       return { aggregatedItems: {}, peopleOrders: [], listTotal: 0 };
     }
 
     const targetDateDb = getLocalDateString(targetDate);
     const filteredOrders = allOrders.filter(o => o.targetDate === targetDateDb);
+
+    // Count stats for profiling
+    let totalItemsQuantity = 0;
+    let totalOrderItemsCount = 0;
+    filteredOrders.forEach((order) => {
+      const itemsForOrder = allOrderItems.filter((oi) => oi.orderId === order.id);
+      totalOrderItemsCount += itemsForOrder.length;
+      totalItemsQuantity += itemsForOrder.reduce((sum, item) => sum + item.quantity, 0);
+    });
+    const avgItemsPerOrder = filteredOrders.length > 0 ? (totalItemsQuantity / filteredOrders.length) : 0;
+    const avgOrderItemsPerOrder = filteredOrders.length > 0 ? (totalOrderItemsCount / filteredOrders.length) : 0;
+
+    perfLog(`[PERF] [useMemo Start] Processing data for date: ${targetDateDb} (Render #${renderCountRef.current}).
+      - Total DB sizes: orders=${allOrders.length}, orderItems=${allOrderItems.length}, catalog=${catalog.length}, people=${people.length}
+      - Selected day stats: orders=${filteredOrders.length}, orderItemsRows=${totalOrderItemsCount} (avg=${avgOrderItemsPerOrder.toFixed(1)}/order), itemsSum=${totalItemsQuantity} (avg=${avgItemsPerOrder.toFixed(1)}/order)`);
 
     filteredOrders.forEach((order) => {
       const person = people.find((p) => p.id === order.personId);
@@ -197,6 +264,10 @@ export default function TheRunScreen() {
     });
 
     const listTotal = Object.values(agg).reduce((sum, item) => sum + item.totalCost, 0);
+
+    const memoEnd = performance.now();
+    const memoDuration = memoEnd - memoStart;
+    perfLog(`[PERF] [useMemo End] Processing completed in ${memoDuration.toFixed(2)}ms (Render #${renderCountRef.current}).`);
 
     return {
       aggregatedItems: groupedList,
@@ -440,12 +511,28 @@ export default function TheRunScreen() {
   const handlePrevDay = () => {
     const d = new Date(targetDate);
     d.setDate(d.getDate() - 1);
+    const newDateStr = getLocalDateString(d);
+    const oldDateStr = getLocalDateString(targetDate);
+    perfLog(`[PERF] [User Action] handlePrevDay initiated. Transition: ${oldDateStr} -> ${newDateStr}`);
+    dateChangePerfRef.current = {
+      date: newDateStr,
+      startTime: performance.now(),
+      prevDate: oldDateStr,
+    };
     setTargetDate(d);
   };
 
   const handleNextDay = () => {
     const d = new Date(targetDate);
     d.setDate(d.getDate() + 1);
+    const newDateStr = getLocalDateString(d);
+    const oldDateStr = getLocalDateString(targetDate);
+    perfLog(`[PERF] [User Action] handleNextDay initiated. Transition: ${oldDateStr} -> ${newDateStr}`);
+    dateChangePerfRef.current = {
+      date: newDateStr,
+      startTime: performance.now(),
+      prevDate: oldDateStr,
+    };
     setTargetDate(d);
   };
 
@@ -455,6 +542,14 @@ export default function TheRunScreen() {
   const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate) {
+      const newDateStr = getLocalDateString(selectedDate);
+      const oldDateStr = getLocalDateString(targetDate);
+      perfLog(`[PERF] [User Action] onDateChange initiated (DatePicker). Transition: ${oldDateStr} -> ${newDateStr}`);
+      dateChangePerfRef.current = {
+        date: newDateStr,
+        startTime: performance.now(),
+        prevDate: oldDateStr,
+      };
       setTargetDate(selectedDate);
     }
   };
