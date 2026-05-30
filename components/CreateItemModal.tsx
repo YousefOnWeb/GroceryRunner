@@ -133,7 +133,7 @@ export default function CreateItemModal({
     );
   };
 
-  const isEditMode = title.toLowerCase().includes('edit');
+  const isEditMode = title.toLowerCase().includes('edit') || title.includes('تعديل');
 
   return (
     <Modal visible={visible} transparent animationType="slide">
