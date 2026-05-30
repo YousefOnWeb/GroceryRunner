@@ -26,10 +26,29 @@ export const db = drizzle(expoDb, { schema });
     const tablesToUpdate = ['persons', 'items', 'placeAliases', 'sourceAliases'];
     for (const table of tablesToUpdate) {
       try {
-        await db.run(sql.raw(`ALTER TABLE ${table} ADD COLUMN createdAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP`));
+        await db.run(sql.raw(`ALTER TABLE ${table} ADD COLUMN createdAt TEXT`));
       } catch (e) {
         // Already exists or table doesn't exist yet
       }
+    }
+
+    // resilient check for new fields in orders table
+    try {
+      await db.run(sql`ALTER TABLE orders ADD COLUMN createdAt TEXT`);
+    } catch (e) {
+      // Column probably already exists
+    }
+    try {
+      await db.run(sql`ALTER TABLE orders ADD COLUMN modifiedAt TEXT`);
+    } catch (e) {
+      // Column probably already exists
+    }
+
+    // resilient check for new lastOrderedAt field in items table
+    try {
+      await db.run(sql`ALTER TABLE items ADD COLUMN lastOrderedAt TEXT`);
+    } catch (e) {
+      // Column probably already exists
     }
   } catch (err) {
     console.error('Migration error:', err);

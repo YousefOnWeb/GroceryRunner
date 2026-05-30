@@ -9,7 +9,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { ACCENT_GOLD, LIGHT_GOLD } from '@/constants/Colors';
 import { useSettings } from '@/utils/settings';
 import { useTranslation } from '@/utils/i18n';
-import { formatDateLabel } from '@/utils/dates';
+import { formatDateLabel, formatDateTime } from '@/utils/dates';
 
 interface PersonOrdersModalProps {
   visible: boolean;
@@ -23,7 +23,7 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
   const { t, isRTL } = useTranslation();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'date' | 'status' | 'total'>('date');
+  const [sortBy, setSortBy] = useState<'date' | 'status' | 'total' | 'modified' | 'none'>('none');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const { data: personOrders } = useLiveQuery(
@@ -78,27 +78,40 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
     }
 
     // Sorting
-    filtered.sort((a, b) => {
-      let comparison = 0;
-      if (sortBy === 'date') {
-        comparison = a.targetDate.localeCompare(b.targetDate);
-      } else if (sortBy === 'status') {
-        comparison = (a.isFullyPaid ? 1 : 0) - (b.isFullyPaid ? 1 : 0);
-      } else if (sortBy === 'total') {
-        comparison = a.totalCost - b.totalCost;
-      }
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
+    if (sortBy !== 'none') {
+      filtered.sort((a, b) => {
+        let comparison = 0;
+        if (sortBy === 'date') {
+          comparison = a.targetDate.localeCompare(b.targetDate);
+        } else if (sortBy === 'status') {
+          comparison = (a.isFullyPaid ? 1 : 0) - (b.isFullyPaid ? 1 : 0);
+        } else if (sortBy === 'total') {
+          comparison = a.totalCost - b.totalCost;
+        } else if (sortBy === 'modified') {
+          // Fallback to createdAt if modifiedAt is null/empty
+          // @ts-ignore
+          const dateA = a.modifiedAt || a.createdAt || '';
+          // @ts-ignore
+          const dateB = b.modifiedAt || b.createdAt || '';
+          comparison = dateA.localeCompare(dateB);
+        }
+        return sortOrder === 'asc' ? comparison : -comparison;
+      });
+    }
 
     return filtered;
   }, [personOrders, allOrderItems, searchQuery, sortBy, sortOrder]);
 
-  const toggleSort = (type: typeof sortBy) => {
+  const toggleSort = (type: 'date' | 'status' | 'total' | 'modified') => {
     if (sortBy === type) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      if (sortOrder === 'asc') {
+        setSortOrder('desc');
+      } else {
+        setSortBy('none');
+      }
     } else {
       setSortBy(type);
-      setSortOrder('desc');
+      setSortOrder('asc');
     }
   };
 
@@ -167,13 +180,25 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
                 <FontAwesome name={sortOrder === 'asc' ? "caret-up" : "caret-down"} size={12} color="#fff" style={{ marginStart: 4 }} />
               )}
             </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.sortTab, sortBy === 'modified' && styles.sortTabActive]} 
+              onPress={() => toggleSort('modified')}
+            >
+              <Text style={[styles.sortTabText, sortBy === 'modified' && styles.sortTabTextActive, settings.compactMode && styles.textExtraSmall]}>
+                {t('modals.sortModified')}
+              </Text>
+              {sortBy === 'modified' && (
+                <FontAwesome name={sortOrder === 'asc' ? "caret-up" : "caret-down"} size={12} color="#fff" style={{ marginStart: 4 }} />
+              )}
+            </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
             {processedOrders.map((order) => (
               <View key={order.id} style={[styles.orderCard, settings.compactMode && styles.orderCardCompact]}>
                 <View style={styles.orderHeader}>
-                  <View style={{ alignItems: 'flex-start' }}>
+                  <View style={{ alignItems: 'flex-start', flex: 1, gap: 2 }}>
                     <Text style={[styles.orderDate, settings.compactMode && styles.textSmall]}>
                       {(() => {
                         const [y, m, d] = order.targetDate.split('-').map(Number);
@@ -184,6 +209,20 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
                       <Text style={[styles.orderPlace, settings.compactMode && styles.textExtraSmall]}>
                         📍 {order.deliveryPlace}
                       </Text>
+                    )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                      <FontAwesome name="clock-o" size={settings.compactMode ? 10 : 12} color="#888" />
+                      <Text style={[styles.orderCreatedAt, settings.compactMode && styles.orderCreatedAtCompact]}>
+                        {" "}{t('modals.created')}: {order.createdAt ? formatDateTime(order.createdAt, settings.language || 'en') : t('modals.notAvailable')}
+                      </Text>
+                    </View>
+                    {sortBy === 'modified' && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                        <FontAwesome name="edit" size={settings.compactMode ? 10 : 12} color="#888" />
+                        <Text style={[styles.orderCreatedAt, settings.compactMode && styles.orderCreatedAtCompact]}>
+                          {" "}{t('modals.modified')}: {order.modifiedAt ? formatDateTime(order.modifiedAt, settings.language || 'en') : t('modals.neverModified')}
+                        </Text>
+                      </View>
                     )}
                   </View>
                   <View style={styles.orderStatusRow}>
@@ -279,10 +318,11 @@ const styles = StyleSheet.create({
   searchInputCompact: { height: 32, fontSize: 14 },
   sortRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 15,
   },
-  sortRowCompact: { marginBottom: 10 },
+  sortRowCompact: { marginBottom: 10, gap: 6 },
   sortTab: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -327,6 +367,8 @@ const styles = StyleSheet.create({
   },
   orderDate: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   orderPlace: { color: LIGHT_GOLD, fontSize: 12, marginTop: 2 },
+  orderCreatedAt: { color: '#888', fontSize: 12 },
+  orderCreatedAtCompact: { fontSize: 10 },
   orderStatusRow: { alignItems: 'flex-end' },
   statusBadge: {
     paddingHorizontal: 8,

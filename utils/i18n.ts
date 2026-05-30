@@ -150,6 +150,7 @@ export const translations = {
       detailsPrice: 'Price:',
       detailsSource: 'Source:',
       detailsTiming: 'Timing:',
+      detailsLastOrdered: 'Last Ordered:',
       na: 'N/A',
       deleteConfirmTitle: 'Delete Selected',
       deleteConfirmBody: 'Are you sure you want to delete {count} {tab}?',
@@ -293,8 +294,13 @@ export const translations = {
       searchOrdersPlaceholder: 'Search items or dates...',
       sortStatus: 'Status',
       sortTotal: 'Total',
+      sortModified: 'Modified',
       paid: 'Paid',
       unpaid: 'Unpaid',
+      created: 'Created',
+      modified: 'Modified',
+      neverModified: 'Never modified',
+      notAvailable: 'Not available',
     }
   },
   ar: {
@@ -446,6 +452,7 @@ export const translations = {
       detailsPrice: 'السعر:',
       detailsSource: 'المصدر:',
       detailsTiming: 'الوقت:',
+      detailsLastOrdered: 'آخر طلب:',
       na: 'غير متوفر',
       deleteConfirmTitle: 'حذف المحدد',
       deleteConfirmBody: 'هل أنت متأكد أنك تريد حذف {count} {tab}؟',
@@ -589,8 +596,13 @@ export const translations = {
       searchOrdersPlaceholder: 'ابحث في الأصناف أو التواريخ...',
       sortStatus: 'الحالة',
       sortTotal: 'المجموع',
+      sortModified: 'آخر تعديل',
       paid: 'مدفوع',
       unpaid: 'غير مدفوع',
+      created: 'تم الإنشاء',
+      modified: 'تم التعديل',
+      neverModified: 'لم يتم التعديل',
+      notAvailable: 'غير متوفر',
     }
   }
 };

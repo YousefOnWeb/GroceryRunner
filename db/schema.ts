@@ -22,6 +22,7 @@ export const items = sqliteTable('items', {
   source: text('source'),
   timing: text('timing', { enum: ['Fresh', 'Anytime'] }).notNull().default('Fresh'),
   createdAt: text('createdAt').notNull().default(sql`CURRENT_TIMESTAMP`),
+  lastOrderedAt: text('lastOrderedAt'),
 });
 
 export const itemAliases = sqliteTable('itemAliases', {
@@ -51,6 +52,8 @@ export const orders = sqliteTable('orders', {
   targetDate: text('targetDate').notNull(), // 'YYYY-MM-DD'
   isPaid: integer('isPaid', { mode: 'boolean' }).notNull().default(false),
   deliveryPlace: text('deliveryPlace'),
+  createdAt: text('createdAt'),
+  modifiedAt: text('modifiedAt'),
 });
 
 export const orderItems = sqliteTable('orderItems', {

@@ -204,6 +204,7 @@ export const api = {
     });
 
     let finalPlace = deliveryPlace ? await api.resolvePlaceByNameOrAlias(deliveryPlace) : null;
+    const now = new Date().toISOString();
 
     await db.insert(orders).values({
       id: orderId,
@@ -211,10 +212,18 @@ export const api = {
       targetDate,
       isPaid: shouldAutoPay,
       deliveryPlace: finalPlace,
+      createdAt: now,
     });
     
     if (linesToInsert.length > 0) {
       await db.insert(orderItems).values(linesToInsert);
+      
+      const itemIds = Array.from(new Set(orderLines.map(line => line.itemId)));
+      if (itemIds.length > 0) {
+        await db.update(items)
+          .set({ lastOrderedAt: now })
+          .where(inArray(items.id, itemIds));
+      }
     }
 
     if (totalCost > 0) {
@@ -307,12 +316,21 @@ export const api = {
       });
     }
     
-    // Update deliveryPlace and set order status
-    const orderUpdates: any = { isPaid: shouldAutoPay };
+    // Update deliveryPlace and set order status & modifiedAt
+    const now = new Date().toISOString();
+    const orderUpdates: any = { isPaid: shouldAutoPay, modifiedAt: now };
     if (deliveryPlace !== undefined) {
       orderUpdates.deliveryPlace = deliveryPlace ? await api.resolvePlaceByNameOrAlias(deliveryPlace) : null;
     }
     await db.update(orders).set(orderUpdates).where(eq(orders.id, orderId));
+
+    // Update lastOrderedAt for items in the updated order
+    const itemIds = Array.from(new Set(newOrderLines.map(line => line.itemId)));
+    if (itemIds.length > 0) {
+      await db.update(items)
+        .set({ lastOrderedAt: now })
+        .where(inArray(items.id, itemIds));
+    }
   },
 
 
@@ -341,7 +359,7 @@ export const api = {
       const cashAdded = Math.min(totalUnpaidCost, debt);
 
       await db.update(orderItems).set({ isPaid: true }).where(inArray(orderItems.id, idsToUpdate));
-      await db.update(orders).set({ isPaid: true }).where(eq(orders.id, orderId));
+      await db.update(orders).set({ isPaid: true, modifiedAt: new Date().toISOString() }).where(eq(orders.id, orderId));
 
       if (cashAdded > 0) {
         // Reimburse runner for cash received
@@ -370,7 +388,7 @@ export const api = {
       .set({ isPaid: true })
       .where(sql`${orderItems.orderId} IN (SELECT id FROM ${orders} WHERE personId = ${personId})`);
     await db.update(orders)
-      .set({ isPaid: true })
+      .set({ isPaid: true, modifiedAt: new Date().toISOString() })
       .where(eq(orders.personId, personId));
   },
 
@@ -393,7 +411,7 @@ export const api = {
 
     if (idsToUpdate.length > 0) {
       await db.update(orderItems).set({ isPaid: false }).where(inArray(orderItems.id, idsToUpdate));
-      await db.update(orders).set({ isPaid: false }).where(eq(orders.id, orderId));
+      await db.update(orders).set({ isPaid: false, modifiedAt: new Date().toISOString() }).where(eq(orders.id, orderId));
 
       if (totalPaidCost > 0) {
         // Find and delete the most recent "Settled" transaction for this order
@@ -485,6 +503,11 @@ export const api = {
         .innerJoin(orders, eq(orderItems.orderId, orders.id))
         .where(eq(orderItems.itemId, id));
 
+        const orderIds = Array.from(new Set(allInstances.map(item => item.orderId)));
+        if (orderIds.length > 0) {
+          await db.update(orders).set({ modifiedAt: new Date().toISOString() }).where(inArray(orders.id, orderIds));
+        }
+
         for (const item of allInstances) {
           if (oldItemPrice === null) {
             // INITIALIZING PRICE for the first time
@@ -553,6 +576,11 @@ export const api = {
           eq(orderItems.itemId, id),
           sql`${orderItems.unitPrice} IS NULL`
         ));
+
+        const orderIds = Array.from(new Set(pendingItems.map(item => item.orderId)));
+        if (orderIds.length > 0) {
+          await db.update(orders).set({ modifiedAt: new Date().toISOString() }).where(inArray(orders.id, orderIds));
+        }
 
         for (const item of pendingItems) {
           await db.update(orderItems)
@@ -717,7 +745,8 @@ export const api = {
           await db.update(items).set({
             defaultPrice: i.defaultPrice,
             source: i.source,
-            timing: i.timing
+            timing: i.timing,
+            lastOrderedAt: i.lastOrderedAt || null
           }).where(eq(items.id, existing[0].id));
         }
       } else {
@@ -728,7 +757,8 @@ export const api = {
           defaultPrice: i.defaultPrice,
           source: i.source,
           timing: i.timing,
-          createdAt: i.createdAt
+          createdAt: i.createdAt,
+          lastOrderedAt: i.lastOrderedAt || null
         });
         itemIdMap[i.id] = newId;
       }
@@ -783,7 +813,9 @@ export const api = {
           await db.delete(orderItems).where(eq(orderItems.orderId, existing[0].id));
           await db.update(orders).set({
             deliveryPlace: o.deliveryPlace,
-            isPaid: o.isPaid
+            isPaid: o.isPaid,
+            createdAt: o.createdAt || (existing[0] as any).createdAt,
+            modifiedAt: o.modifiedAt || null
           }).where(eq(orders.id, existing[0].id));
           
           const itemsForThisOrder = (data.orderItems || []).filter((oi: any) => oi.orderId === o.id);
@@ -807,7 +839,9 @@ export const api = {
           personId: newPersonId,
           targetDate: o.targetDate,
           deliveryPlace: o.deliveryPlace,
-          isPaid: o.isPaid
+          isPaid: o.isPaid,
+          createdAt: o.createdAt || new Date().toISOString(),
+          modifiedAt: o.modifiedAt || null
         });
         
         const itemsForThisOrder = (data.orderItems || []).filter((oi: any) => oi.orderId === o.id);

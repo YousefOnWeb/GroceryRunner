@@ -5,7 +5,7 @@ import UnknownPriceModal from '@/components/UnknownPriceModal';
 import { db } from '@/db';
 import { api } from '@/db/api';
 import { items, orderItems, orders, persons } from '@/db/schema';
-import { formatDateLabel, generateDateOptions, getDefaultDate, getLocalDateString } from '@/utils/dates';
+import { formatDateLabel, formatDateTime, generateDateOptions, getDefaultDate, getLocalDateString } from '@/utils/dates';
 import { useTranslation } from '@/utils/i18n';
 import { useSettings } from '@/utils/settings';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -1210,6 +1210,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
+  orderCreatedAt: { color: '#888', fontSize: 12 },
+  orderCreatedAtCompact: { fontSize: 10 },
 });
 
 // ==========================================
@@ -1310,11 +1312,17 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
                   style={{ marginEnd: 10 }}
                 />
               )}
-              <View style={{ flex: 1, alignItems: 'flex-start', overflow: 'hidden', paddingEnd: 8 }}>
+              <View style={{ flex: 1, alignItems: 'flex-start', overflow: 'hidden', paddingEnd: 8, gap: 2 }}>
                 <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.personName, compactMode && styles.personNameCompact, { textAlign: isRTL ? 'right' : 'left' }]}>{po.person.name}</Text>
                 {po.deliveryPlace ? (
                   <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.deliveryPlace, compactMode && styles.textExtraSmall, { textAlign: isRTL ? 'right' : 'left' }]}>📍 {po.deliveryPlace}</Text>
                 ) : null}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                  <FontAwesome name="clock-o" size={compactMode ? 10 : 12} color="#888" />
+                  <Text style={[styles.orderCreatedAt, compactMode && styles.orderCreatedAtCompact]}>
+                    {" "}{t('modals.created')}: {po.order.createdAt ? formatDateTime(po.order.createdAt, isRTL ? 'ar' : 'en') : t('modals.notAvailable')}
+                  </Text>
+                </View>
               </View>
             </View>
             <View style={styles.costInfo}>

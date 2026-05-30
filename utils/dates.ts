@@ -61,3 +61,22 @@ export function formatDateLabel(date: Date, t: (key: string) => string, daysShor
   
   return label;
 }
+
+export function formatDateTime(dateStr: string | null | undefined, lang: 'en' | 'ar') {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  
+  try {
+    return date.toLocaleString(lang === 'ar' ? 'ar-EG' : 'en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch (e) {
+    return date.toLocaleString();
+  }
+}

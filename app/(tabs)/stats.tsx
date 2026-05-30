@@ -12,6 +12,7 @@ import MergeModal from '@/components/MergeModal';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useTranslation } from '@/utils/i18n';
 import { ACCENT_GOLD } from '@/constants/Colors';
+import { formatDateTime } from '@/utils/dates';
 
 const EMPTY_ARRAY: any[] = [];
 
@@ -316,6 +317,7 @@ export default function StatsScreen() {
           onPress={(id) => selectionMode ? toggleSelection(id) : null}
           onEdit={handleEditClick}
           t={t}
+          language={settings.language || 'en'}
         />
       );
     } else {
@@ -706,6 +708,7 @@ interface ItemCardProps {
   onPress: (id: string) => void;
   onEdit: (item: any) => void;
   t: (key: string, params?: any) => string;
+  language: 'en' | 'ar';
 }
 
 const ItemCard = React.memo(function ItemCard({
@@ -718,6 +721,7 @@ const ItemCard = React.memo(function ItemCard({
   onPress,
   onEdit,
   t,
+  language,
 }: ItemCardProps) {
   return (
     <TouchableOpacity 
@@ -742,6 +746,7 @@ const ItemCard = React.memo(function ItemCard({
           <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsPrice')} {item.defaultPrice ? `$${item.defaultPrice}` : t('stats.na')}</Text>
           <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsSource')} {item.source || t('stats.na')}</Text>
           <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsTiming')} {item.timing || t('stats.na')}</Text>
+          <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsLastOrdered')} {item.lastOrderedAt ? formatDateTime(item.lastOrderedAt, language) : t('stats.na')}</Text>
         </View>
       </View>
 
