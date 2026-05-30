@@ -526,7 +526,7 @@ export default function StatsScreen() {
         data={listData}
         renderItem={renderDictionaryItem}
         keyExtractor={keyExtractor}
-        ListHeaderComponent={renderHeader}
+        ListHeaderComponent={renderHeader()}
         contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact, { paddingBottom: 100 }]}
         keyboardShouldPersistTaps="handled"
       />

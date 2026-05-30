@@ -456,7 +456,7 @@ export default function PeopleScreen() {
         data={filteredPeople}
         renderItem={renderPersonItem}
         keyExtractor={(item) => item.id}
-        ListHeaderComponent={renderHeader}
+        ListHeaderComponent={renderHeader()}
         ListEmptyComponent={renderEmpty}
         contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact, { paddingBottom: 100 }]}
         keyboardShouldPersistTaps="handled"
