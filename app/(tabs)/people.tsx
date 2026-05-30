@@ -11,7 +11,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { and, eq, sql } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList, Pressable, Animated } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSettings } from '@/utils/settings';
 import { useTranslation } from '@/utils/i18n';
@@ -366,7 +366,7 @@ export default function PeopleScreen() {
         {!isSearching && !selectionMode && (
           <View style={[styles.sortBar, settings.compactMode && styles.sortBarCompact]}>
             <Text style={[styles.sortLabel, settings.compactMode && styles.textExtraSmall]}>{t('people.sortLabel')}</Text>
-            <TouchableOpacity 
+            <FadePressable 
               style={[styles.sortBtn, sortBy === 'lexical' && styles.sortBtnActive, settings.compactMode && styles.sortBtnCompact]} 
               onPress={() => toggleSort('lexical')}
             >
@@ -384,9 +384,9 @@ export default function PeopleScreen() {
                   style={{ marginStart: 2 }} 
                 />
               )}
-            </TouchableOpacity>
+            </FadePressable>
             
-            <TouchableOpacity 
+            <FadePressable 
               style={[styles.sortBtn, sortBy === 'balance' && styles.sortBtnActive, settings.compactMode && styles.sortBtnCompact]} 
               onPress={() => toggleSort('balance')}
             >
@@ -404,9 +404,9 @@ export default function PeopleScreen() {
                   style={{ marginStart: 2 }} 
                 />
               )}
-            </TouchableOpacity>
+            </FadePressable>
 
-            <TouchableOpacity 
+            <FadePressable 
               style={[styles.sortBtn, sortBy === 'date' && styles.sortBtnActive, settings.compactMode && styles.sortBtnCompact]} 
               onPress={() => toggleSort('date')}
             >
@@ -424,7 +424,7 @@ export default function PeopleScreen() {
                   style={{ marginStart: 2 }} 
                 />
               )}
-            </TouchableOpacity>
+            </FadePressable>
           </View>
         )}
       </View>
@@ -716,6 +716,42 @@ const styles = StyleSheet.create({
 // ==========================================
 // MEMOIZED PERFORMANCE-OPTIMIZED SUBCOMPONENTS
 // ==========================================
+
+interface FadePressableProps extends React.ComponentProps<typeof Pressable> {
+  children: React.ReactNode;
+}
+
+const FadePressable = ({ children, style, ...props }: FadePressableProps) => {
+  const animatedValue = React.useRef(new Animated.Value(1)).current;
+
+  const onPressIn = () => {
+    Animated.timing(animatedValue, {
+      toValue: 0.7,
+      duration: 100,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const onPressOut = () => {
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      {...props}
+    >
+      <Animated.View style={[style as any, { opacity: animatedValue }]}>
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+};
 
 interface PersonCardProps {
   person: any;

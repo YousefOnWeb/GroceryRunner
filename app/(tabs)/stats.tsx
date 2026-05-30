@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList } from 'react-native';
+import { StyleSheet, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList, Pressable, Animated } from 'react-native';
 import { useSettings } from '@/utils/settings';
 import { Text, View, TextInput } from '@/components/Themed';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
@@ -454,7 +454,7 @@ export default function StatsScreen() {
           <View style={[styles.sortBar, settings.compactMode && styles.sortBarCompact]}>
             <Text style={[styles.sortLabel, settings.compactMode && styles.textExtraSmall]}>{t('stats.sortLabel')}</Text>
             
-            <TouchableOpacity 
+            <FadePressable 
               style={[styles.sortBtn, (activeTab === 'Items' ? itemSort : activeTab === 'Places' ? placeSort : sourceSort) === 'lexical' && styles.sortBtnActive, settings.compactMode && styles.sortBtnCompact]} 
               onPress={() => toggleSort('lexical')}
             >
@@ -463,10 +463,10 @@ export default function StatsScreen() {
               {(activeTab === 'Items' ? itemSort : activeTab === 'Places' ? placeSort : sourceSort) === 'lexical' && (
                 <FontAwesome name={sortOrder === 'asc' ? "caret-up" : "caret-down"} size={10} color="#fff" style={{ marginStart: 2 }} />
               )}
-            </TouchableOpacity>
+            </FadePressable>
 
             {activeTab === 'Items' && (
-              <TouchableOpacity 
+              <FadePressable 
                 style={[styles.sortBtn, itemSort === 'price' && styles.sortBtnActive, settings.compactMode && styles.sortBtnCompact]} 
                 onPress={() => toggleSort('price')}
               >
@@ -475,10 +475,10 @@ export default function StatsScreen() {
                 {itemSort === 'price' && (
                   <FontAwesome name={sortOrder === 'asc' ? "caret-up" : "caret-down"} size={10} color="#fff" style={{ marginStart: 2 }} />
                 )}
-              </TouchableOpacity>
+              </FadePressable>
             )}
 
-            <TouchableOpacity 
+            <FadePressable 
               style={[styles.sortBtn, (activeTab === 'Items' ? itemSort : activeTab === 'Places' ? placeSort : sourceSort) === 'date' && styles.sortBtnActive, settings.compactMode && styles.sortBtnCompact]} 
               onPress={() => toggleSort('date')}
             >
@@ -487,7 +487,7 @@ export default function StatsScreen() {
               {(activeTab === 'Items' ? itemSort : activeTab === 'Places' ? placeSort : sourceSort) === 'date' && (
                 <FontAwesome name={sortOrder === 'asc' ? "caret-up" : "caret-down"} size={10} color="#fff" style={{ marginStart: 2 }} />
               )}
-            </TouchableOpacity>
+            </FadePressable>
           </View>
         )}
 
@@ -659,6 +659,42 @@ const styles = StyleSheet.create({
 // ==========================================
 // MEMOIZED PERFORMANCE-OPTIMIZED SUBCOMPONENTS
 // ==========================================
+
+interface FadePressableProps extends React.ComponentProps<typeof Pressable> {
+  children: React.ReactNode;
+}
+
+const FadePressable = ({ children, style, ...props }: FadePressableProps) => {
+  const animatedValue = React.useRef(new Animated.Value(1)).current;
+
+  const onPressIn = () => {
+    Animated.timing(animatedValue, {
+      toValue: 0.7,
+      duration: 100,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const onPressOut = () => {
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Pressable
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      {...props}
+    >
+      <Animated.View style={[style as any, { opacity: animatedValue }]}>
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+};
 
 interface ItemCardProps {
   item: any;
