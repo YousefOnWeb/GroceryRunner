@@ -82,6 +82,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="unsettled"
+        options={{
+          title: t('tabs.unsettled') || 'Unsettled',
+          tabBarIcon: ({ color }) => <TabBarIcon name="money" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: t('tabs.settings') || 'Settings',

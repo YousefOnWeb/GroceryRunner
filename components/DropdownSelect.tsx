@@ -11,6 +11,9 @@ interface DropdownSelectProps {
   onSelect: (value: string) => void;
   placeholder?: string;
   allowCustom?: boolean;
+  triggerStyle?: any;
+  textStyle?: any;
+  compact?: boolean;
 }
 
 export default function DropdownSelect({
@@ -20,14 +23,29 @@ export default function DropdownSelect({
   onSelect,
   placeholder = 'Select an option...',
   allowCustom = false,
+  triggerStyle,
+  textStyle,
+  compact = false,
 }: DropdownSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [customValue, setCustomValue] = useState('');
 
   return (
     <>
-      <TouchableOpacity style={styles.trigger} onPress={() => setIsOpen(true)}>
-        <Text style={[styles.triggerText, !value && styles.placeholder]}>
+      <TouchableOpacity 
+        style={[
+          styles.trigger, 
+          compact && { padding: 6, height: 36 }, 
+          triggerStyle
+        ]} 
+        onPress={() => setIsOpen(true)}
+      >
+        <Text style={[
+          styles.triggerText, 
+          compact && { fontSize: 13 },
+          !value && styles.placeholder, 
+          textStyle
+        ]}>
           {value || placeholder}
         </Text>
         <FontAwesome name="chevron-down" size={14} color="#888" />
