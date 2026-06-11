@@ -1,10 +1,12 @@
 import { and, eq, inArray, like, sql } from 'drizzle-orm';
 import * as crypto from 'expo-crypto';
 import { db } from './index';
-import { items, orderItems, orders, personAliases, persons, transactions, itemAliases, placeAliases, sourceAliases } from './schema';
+import { items, orderItems, orders, personAliases, persons, transactions, itemAliases, placeAliases, sourceAliases, tasks } from './schema';
 
 export const generateId = () => crypto.randomUUID();
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
+
+import { scheduleTaskNotification, cancelTaskNotification } from '../utils/notifications';
 
 export const api = {
   addPerson: async (name: string, typicalPlace?: string | null, aliases?: string[]) => {
@@ -682,6 +684,86 @@ export const api = {
     return Array.from(all);
   },
 
+  addTask: async (
+    title: string,
+    type: 'physical_give' | 'physical_take' | 'meetup_task' | 'general_task',
+    personId?: string | null,
+    targetDate?: string | null,
+    targetTime?: string | null,
+    locationPlace?: string | null
+  ) => {
+    const id = generateId();
+    let finalLocation = locationPlace;
+    if (!finalLocation && personId) {
+      const person = await db.select({ place: persons.typicalPlace }).from(persons).where(eq(persons.id, personId));
+      if (person.length > 0) finalLocation = person[0].place;
+    }
+
+    const notificationId = await scheduleTaskNotification(id, title, targetDate || null, targetTime || null);
+
+    await db.insert(tasks).values({
+      id,
+      title: title.trim(),
+      type,
+      personId: personId || null,
+      targetDate: targetDate || null,
+      targetTime: targetTime || null,
+      locationPlace: finalLocation || null,
+      notificationId,
+    });
+  },
+
+  updateTask: async (
+    id: string,
+    updates: Partial<{
+      title: string;
+      type: 'physical_give' | 'physical_take' | 'meetup_task' | 'general_task';
+      personId: string | null;
+      targetDate: string | null;
+      targetTime: string | null;
+      locationPlace: string | null;
+      isCompleted: boolean;
+    }>
+  ) => {
+    const taskRows = await db.select().from(tasks).where(eq(tasks.id, id));
+    if (taskRows.length === 0) return;
+    const task = taskRows[0];
+
+    const finalUpdates: any = { ...updates };
+    
+    // Manage Notifications
+    if (updates.targetDate !== undefined || updates.targetTime !== undefined || updates.isCompleted !== undefined || updates.title !== undefined) {
+      await cancelTaskNotification(task.notificationId);
+      finalUpdates.notificationId = null;
+
+      const newIsCompleted = updates.isCompleted !== undefined ? updates.isCompleted : task.isCompleted;
+      
+      if (!newIsCompleted) {
+        const newTitle = updates.title !== undefined ? updates.title : task.title;
+        const newDate = updates.targetDate !== undefined ? updates.targetDate : task.targetDate;
+        const newTime = updates.targetTime !== undefined ? updates.targetTime : task.targetTime;
+        
+        finalUpdates.notificationId = await scheduleTaskNotification(id, newTitle, newDate, newTime);
+      }
+    }
+
+    if (updates.title) finalUpdates.title = updates.title.trim();
+
+    await db.update(tasks).set(finalUpdates).where(eq(tasks.id, id));
+  },
+
+  deleteTask: async (id: string) => {
+    const taskRows = await db.select().from(tasks).where(eq(tasks.id, id));
+    if (taskRows.length > 0) {
+      await cancelTaskNotification(taskRows[0].notificationId);
+      await db.delete(tasks).where(eq(tasks.id, id));
+    }
+  },
+
+  completeTask: async (id: string, isCompleted: boolean) => {
+    await api.updateTask(id, { isCompleted });
+  },
+
   getAllData: async () => {
     return {
       version: CURRENT_SCHEMA_VERSION,
@@ -696,6 +778,7 @@ export const api = {
         transactions: await db.select().from(transactions),
         placeAliases: await db.select().from(placeAliases),
         sourceAliases: await db.select().from(sourceAliases),
+        tasks: await db.select().from(tasks),
       }
     };
   },
@@ -801,8 +884,32 @@ export const api = {
         }
       }
     }
+    
+    // --- 4. IMPORT TASKS ---
+    if (data.tasks) {
+      for (const t of data.tasks) {
+        const existing = await db.select().from(tasks).where(eq(tasks.id, t.id));
+        let pId = t.personId;
+        if (pId && personIdMap[pId]) pId = personIdMap[pId];
+        
+        if (existing.length === 0) {
+          await db.insert(tasks).values({
+            id: t.id,
+            title: t.title,
+            type: t.type,
+            personId: pId,
+            targetDate: t.targetDate,
+            targetTime: t.targetTime,
+            locationPlace: t.locationPlace,
+            notificationId: t.notificationId,
+            isCompleted: t.isCompleted,
+            createdAt: t.createdAt
+          });
+        }
+      }
+    }
 
-    // --- 4. IMPORT ORDERS ---
+    // --- 5. IMPORT ORDERS ---
     for (const o of (data.orders || [])) {
       const newPersonId = personIdMap[o.personId];
       if (!newPersonId) continue;

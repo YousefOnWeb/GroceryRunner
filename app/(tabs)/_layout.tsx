@@ -63,7 +63,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="add-order"
         options={{
-          title: t('tabs.addOrder') || 'Add Order',
+          title: t('tabs.addOrder') || 'Add',
           tabBarIcon: ({ color }) => <TabBarIcon name="plus-circle" color={color} />,
         }}
       />
@@ -84,8 +84,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="unsettled"
         options={{
-          title: t('tabs.unsettled') || 'Unsettled',
-          tabBarIcon: ({ color }) => <TabBarIcon name="money" color={color} />,
+          title: t('tabs.unsettled') || 'Meetups & Delivery',
+          tabBarIcon: ({ color }) => <TabBarIcon name="handshake-o" color={color} />,
         }}
       />
       <Tabs.Screen

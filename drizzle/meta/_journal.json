@@ -29,6 +29,13 @@
       "when": 1777476730919,
       "tag": "0003_faulty_tarot",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1781110669691,
+      "tag": "0004_milky_firestar",
+      "breakpoints": true
     }
   ]
 }

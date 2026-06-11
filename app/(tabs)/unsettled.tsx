@@ -3,7 +3,7 @@ import { StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Ke
 import { Text, View, TextInput } from '@/components/Themed';
 import { db } from '@/db';
 import { api } from '@/db/api';
-import { orderItems, orders, personAliases, persons, items } from '@/db/schema';
+import { orderItems, orders, personAliases, persons, items, tasks } from '@/db/schema';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { and, eq, sql } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
@@ -62,6 +62,9 @@ export default function UnsettledScreen() {
   const { data: catalog } = useLiveQuery(db.select().from(items));
   const { data: peopleList } = useLiveQuery(db.select().from(persons));
   const { data: allAliases } = useLiveQuery(db.select().from(personAliases));
+  const { data: allIncompleteTasks } = useLiveQuery(
+    db.select().from(tasks).where(eq(tasks.isCompleted, false))
+  );
 
   // Force re-render when focused to keep relative dates updated
   useFocusEffect(
@@ -72,11 +75,11 @@ export default function UnsettledScreen() {
 
   // Map orders, calculate totals, resolve relations
   const unsettledOrdersList = useMemo(() => {
-    if (!allUnsettledOrders || !allUnsettledOrderItems || !catalog || !peopleList) {
+    if (!allUnsettledOrders || !allUnsettledOrderItems || !catalog || !peopleList || !allIncompleteTasks) {
       return [];
     }
 
-    return allUnsettledOrders.map(order => {
+    const baseList = allUnsettledOrders.map(order => {
       const person = peopleList.find(p => p.id === order.personId);
       const itemsForOrder = allUnsettledOrderItems.filter(oi => oi.orderId === order.id);
 
@@ -103,6 +106,7 @@ export default function UnsettledScreen() {
         order,
         person: person || { id: order.personId, name: 'Unknown Customer', balance: 0 },
         items: orderDetails,
+        tasks: [] as any[],
         totalCost,
         unpaidCost,
         hasUnpaidItems,
@@ -110,7 +114,34 @@ export default function UnsettledScreen() {
         deliveryPlace: order.deliveryPlace || person?.typicalPlace || null
       };
     });
-  }, [allUnsettledOrders, allUnsettledOrderItems, catalog, peopleList, refreshKey]);
+
+    const personTasks = allIncompleteTasks.filter(t => !!t.personId);
+
+    personTasks.forEach(task => {
+      const existingEntry = baseList.find(b => b.person.id === task.personId && b.order.targetDate === (task.targetDate || 'No Date'));
+      
+      if (existingEntry) {
+         existingEntry.tasks.push(task);
+      } else {
+         const person = peopleList.find(p => p.id === task.personId);
+         if (person) {
+           baseList.push({
+             order: { id: `task-only-${task.id}`, targetDate: task.targetDate || 'No Date', createdAt: task.createdAt, isPaid: true } as any,
+             person,
+             items: [],
+             tasks: [task],
+             totalCost: 0,
+             unpaidCost: 0,
+             hasUnpaidItems: false,
+             hasUnknownPriceItems: false,
+             deliveryPlace: task.locationPlace || person.typicalPlace || null
+           });
+         }
+      }
+    });
+
+    return baseList;
+  }, [allUnsettledOrders, allUnsettledOrderItems, catalog, peopleList, allIncompleteTasks, refreshKey]);
 
   // Apply search query filtering
   const filteredOrders = useMemo(() => {
@@ -830,6 +861,28 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
           </RNView>
 
           <RNView style={styles.personItems}>
+            {po.tasks && po.tasks.length > 0 && (
+              <RNView style={{ marginBottom: po.items.length > 0 ? 10 : 0 }}>
+                {po.tasks.map((task: any) => (
+                  <TouchableOpacity
+                    key={task.id}
+                    style={[styles.personTaskRow, compactMode && styles.personTaskRowCompact]}
+                    onPress={async () => {
+                      try {
+                        await api.completeTask(task.id, !task.isCompleted);
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }}
+                  >
+                    <FontAwesome name={task.isCompleted ? "check-square-o" : "square-o"} size={compactMode ? 16 : 18} color={task.isCompleted ? "#4caf50" : "#888"} />
+                    <Text style={[styles.personTaskText, task.isCompleted && styles.personTaskTextCompleted, compactMode && { fontSize: 14 }]}>
+                      {task.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </RNView>
+            )}
             {po.items.map((i: any) => (
               <OrderItemRow
                 key={i.id}
@@ -998,8 +1051,25 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   searchInputCompact: {
-    paddingVertical: 6,
+    paddingVertical: 8,
     fontSize: 14,
+  },
+  personTaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  personTaskRowCompact: {
+    paddingVertical: 4,
+  },
+  personTaskText: {
+    color: '#fff',
+    fontSize: 15,
+  },
+  personTaskTextCompleted: {
+    color: '#888',
+    textDecorationLine: 'line-through',
   },
   searchContainerCompact: {
     marginBottom: 8,

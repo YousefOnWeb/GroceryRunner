@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, TouchableOpacity, View, ActivityIndicator, I18nManager } from 'react-native';
 import { Text } from './Themed';
+import { db } from '@/db';
+import { persons } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 import { api } from '@/db/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSettings } from '@/utils/settings';
@@ -30,7 +33,17 @@ export default function CreditLogModal({ visible, personId, personName, onClose 
     setLoading(true);
     try {
       const data = await api.getTransactionsForPerson(personId);
-      setLogs(data);
+      const personData = await db.select({ balance: persons.balance }).from(persons).where(eq(persons.id, personId));
+      let currentBal = personData.length > 0 ? personData[0].balance : 0;
+      
+      const logsWithBalance = data.map(log => {
+        const after = currentBal;
+        const before = currentBal - log.amount;
+        currentBal = before;
+        return { ...log, balanceBefore: before, balanceAfter: after };
+      });
+      
+      setLogs(logsWithBalance);
     } catch (e) {
       console.error(e);
     } finally {
@@ -78,7 +91,19 @@ export default function CreditLogModal({ visible, personId, personName, onClose 
                       {log.amount >= 0 ? '+' : ''}{log.amount.toFixed(2)}
                     </Text>
                   </View>
-                  <Text style={[styles.logNote, settings.compactMode && styles.textSmall]}>{log.note || log.type}</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <Text style={[styles.logNote, settings.compactMode && styles.textSmall, { flex: 1, marginEnd: 10 }]}>{log.note || log.type}</Text>
+                    
+                    <View style={styles.balanceBadge}>
+                      <Text style={[styles.balanceText, { color: getAmountColor(log.balanceBefore) }]}>
+                        {log.balanceBefore >= 0 ? '+' : ''}{log.balanceBefore.toFixed(2)}
+                      </Text>
+                      <FontAwesome name={isRTL ? "long-arrow-left" : "long-arrow-right"} size={10} color="#888" style={{ marginHorizontal: 6 }} />
+                      <Text style={[styles.balanceText, { color: getAmountColor(log.balanceAfter) }]}>
+                        {log.balanceAfter >= 0 ? '+' : ''}{log.balanceAfter.toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               ))}
               {logs.length === 0 && (
@@ -134,6 +159,20 @@ const styles = StyleSheet.create({
   logDate: { color: '#888', fontSize: 12, textAlign: I18nManager.isRTL ? 'right' : 'left' },
   logAmount: { fontWeight: 'bold', fontSize: 16 },
   logNote: { color: '#eee', fontSize: 14, textAlign: I18nManager.isRTL ? 'right' : 'left' },
+  balanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#333',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  balanceText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
   emptyText: { color: '#666', textAlign: 'center', marginTop: 20, fontStyle: 'italic' },
   textSmall: { fontSize: 13 },
   textExtraSmall: { fontSize: 11 },

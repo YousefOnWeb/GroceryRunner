@@ -4,8 +4,9 @@ import { Text, View, TextInput } from '@/components/Themed';
 import UnknownPriceModal from '@/components/UnknownPriceModal';
 import { db } from '@/db';
 import { api } from '@/db/api';
-import { items, orderItems, orders, persons } from '@/db/schema';
+import { items, orderItems, orders, persons, tasks } from '@/db/schema';
 import { formatDateLabel, formatDateTime, generateDateOptions, getDefaultDate, getLocalDateString } from '@/utils/dates';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from '@/utils/i18n';
 import { useSettings } from '@/utils/settings';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -18,7 +19,7 @@ import { eq } from 'drizzle-orm';
 
 import { ACCENT_GOLD, GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, METALLIC_BEVEL } from '@/constants/Colors';
 // -----------------------
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Alert, AppState, I18nManager, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
 
@@ -59,6 +60,8 @@ export default function TheRunScreen() {
   const [collapsedSources, setCollapsedSources] = useState<Record<string, boolean>>({});
   const [collapsedLocations, setCollapsedLocations] = useState<Record<string, boolean>>({});
 
+  const router = useRouter();
+
   // Multi-select mode
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
@@ -81,7 +84,6 @@ export default function TheRunScreen() {
 
   const { settings } = useSettings();
   const { t, isRTL } = useTranslation();
-  const router = useRouter();
 
   const dateOptions = useMemo(() => generateDateOptions(t, t('modals.daysShort')), [t]);
 
@@ -143,19 +145,25 @@ export default function TheRunScreen() {
   );
   const { data: catalog } = useLiveQuery(db.select().from(items));
   const { data: people } = useLiveQuery(db.select().from(persons));
+  const { data: allTasks } = useLiveQuery(db.select().from(tasks));
 
-  const { aggregatedItems, peopleOrders, listTotal } = useMemo(() => {
+  const { aggregatedItems, peopleOrders, listTotal, generalTasks, physicalChecklist } = useMemo(() => {
     const memoStart = performance.now();
     const agg: Record<string, { item: any; totalQuantity: number; totalCost: number }> = {};
-    const pOrders: Record<string, { person: any; order: any; items: any[]; totalCost: number; unpaidCost: number; hasUnpaidItems: boolean; hasUnknownPriceItems: boolean; deliveryPlace: string | null }> = {};
+    const pOrders: Record<string, { person: any; order: any; items: any[]; tasks: any[]; totalCost: number; unpaidCost: number; hasUnpaidItems: boolean; hasUnknownPriceItems: boolean; deliveryPlace: string | null }> = {};
 
-    if (!allOrders || !allOrderItems || !catalog || !people) {
+    if (!allOrders || !allOrderItems || !catalog || !people || !allTasks) {
       perfLog(`[PERF] [useMemo] DB tables not fully loaded yet inside Render #${renderCountRef.current}`);
-      return { aggregatedItems: {}, peopleOrders: [], listTotal: 0 };
+      return { aggregatedItems: {}, peopleOrders: [], listTotal: 0, generalTasks: [], physicalChecklist: [] };
     }
 
     const targetDateDb = getLocalDateString(targetDate);
     const filteredOrders = allOrders.filter(o => o.targetDate === targetDateDb);
+    const filteredTasks = allTasks.filter(t => !t.targetDate || t.targetDate === targetDateDb);
+
+    const generalTasks = filteredTasks.filter(t => !t.personId && (t.type === 'general_task' || t.type === 'meetup_task') && (!t.isCompleted || t.targetDate === targetDateDb));
+    const physicalChecklist = filteredTasks.filter(t => !t.personId && (t.type === 'physical_give' || t.type === 'physical_take') && (!t.isCompleted || t.targetDate === targetDateDb));
+    const personTasks = filteredTasks.filter(t => !!t.personId && (!t.isCompleted || t.targetDate === targetDateDb));
 
     // Count stats for profiling
     let totalItemsQuantity = 0;
@@ -208,12 +216,33 @@ export default function TheRunScreen() {
           person,
           order,
           items: orderDetails,
+          tasks: [],
           totalCost,
           unpaidCost,
           hasUnpaidItems,
           hasUnknownPriceItems,
           deliveryPlace: order.deliveryPlace || person.typicalPlace
         };
+      }
+    });
+
+    personTasks.forEach(t => {
+      const person = people.find(p => p.id === t.personId);
+      if (person) {
+        if (!pOrders[person.id]) {
+          pOrders[person.id] = {
+            person,
+            order: { id: `task-only-${person.id}`, targetDate: targetDateDb, deliveryPlace: t.locationPlace || person.typicalPlace },
+            items: [],
+            tasks: [],
+            totalCost: 0,
+            unpaidCost: 0,
+            hasUnpaidItems: false,
+            hasUnknownPriceItems: false,
+            deliveryPlace: t.locationPlace || person.typicalPlace
+          };
+        }
+        pOrders[person.id].tasks.push(t);
       }
     });
 
@@ -297,8 +326,10 @@ export default function TheRunScreen() {
         orders: groupedDeliveries[loc] || []
       })),
       listTotal,
+      generalTasks,
+      physicalChecklist,
     };
-  }, [allOrders, allOrderItems, catalog, people, targetDate, settings.groupByFreshness, settings.locationOrder, settings.sourceOrder, targetDate, refreshKey]);
+  }, [allOrders, allOrderItems, catalog, people, allTasks, targetDate, settings.groupByFreshness, settings.locationOrder, settings.sourceOrder, targetDate, refreshKey]);
 
   const flatListData = useMemo(() => {
     const list: any[] = [];
@@ -308,6 +339,15 @@ export default function TheRunScreen() {
     }
 
     if (!isSearching) {
+      if (generalTasks.length > 0) {
+        list.push({ type: 'general-tasks', id: 'general-tasks', tasks: generalTasks });
+      }
+
+      if (physicalChecklist.length > 0) {
+        list.push({ type: 'physical-checklist', id: 'physical-checklist', tasks: physicalChecklist });
+        list.push({ type: 'separator', id: 'shopping-separator-checklist' });
+      }
+
       list.push({ type: 'shopping-header', id: 'shopping-header', listTotal });
 
       Object.entries(aggregatedItems).forEach(([timingKey, sources]) => {
@@ -354,13 +394,39 @@ export default function TheRunScreen() {
 
         const isCollapsed = collapsedLocations[group.location];
         if (!isCollapsed) {
-          filteredOrders.forEach((po) => {
+          filteredOrders.forEach((po, index) => {
             totalFoundOrders++;
+            
+            // 1. Person Header
             list.push({
-              type: 'order-card',
-              id: `order-${po.order.id}`,
-              po,
+              type: 'person-header',
+              id: `person-header-${po.person.id}-${po.order.id}`,
+              person: po.person,
+              deliveryPlace: po.deliveryPlace
             });
+            
+            const hasTasks = po.tasks && po.tasks.length > 0;
+            const hasOrder = po.items && po.items.length > 0;
+            
+            // 2. Order Card
+            if (hasOrder) {
+              list.push({
+                type: 'order-card',
+                id: `order-card-${po.order.id}`,
+                po,
+                isLastInThread: !hasTasks
+              });
+            }
+
+            // 3. Task Card
+            if (hasTasks) {
+              list.push({
+                type: 'task-card',
+                id: `task-card-${po.person.id}-${po.order.id}`,
+                po,
+                isLastInThread: !hasOrder
+              });
+            }
           });
         }
       }
@@ -388,7 +454,67 @@ export default function TheRunScreen() {
     selectedOrders,
     selectionMode,
     checkedItems,
+    generalTasks,
+    physicalChecklist,
   ]);
+
+  const toggleTaskStatus = async (taskId: string, currentStatus: boolean, taskTargetDate?: string | null) => {
+    try {
+      const updates: any = { isCompleted: !currentStatus };
+      if (!currentStatus && !taskTargetDate) {
+        updates.targetDate = getLocalDateString(targetDate);
+      }
+      await api.updateTask(taskId, updates);
+    } catch (e) {
+      console.error(e);
+      Alert.alert(t('common.error'), 'Failed to toggle task status');
+    }
+  };
+
+  const handleEditTask = (task: any) => {
+    router.push({ pathname: '/add-order', params: { editTaskId: task.id } });
+  };
+
+  const handleDeleteTask = (taskId: string, title: string) => {
+    Alert.alert(
+      t('tasks.deleteTitle') || 'Delete Task',
+      t('tasks.deleteConfirm', { title }) || `Are you sure you want to delete "${title}"?`,
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete') || 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.deleteTask(taskId);
+            } catch (e) {
+              console.error(e);
+              Alert.alert(t('common.error'), t('tasks.failedDelete') || 'Failed to delete task');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleTaskLongPress = (task: any) => {
+    Alert.alert(
+      t('tasks.actionTitle') || 'Task Actions',
+      t('tasks.actionMsg', { title: task.title }) || `What do you want to do with "${task.title}"?`,
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.edit') || 'Edit',
+          onPress: () => handleEditTask(task),
+        },
+        {
+          text: t('common.delete') || 'Delete',
+          style: 'destructive',
+          onPress: () => handleDeleteTask(task.id, task.title),
+        },
+      ]
+    );
+  };
 
   const renderFlatItem = React.useCallback(({ item }: { item: any }) => {
     switch (item.type) {
@@ -405,6 +531,42 @@ export default function TheRunScreen() {
             <FontAwesome name={I18nManager.isRTL ? "chevron-right" : "chevron-left"} size={settings.compactMode ? 12 : 14} color={ACCENT_GOLD} />
             <Text style={[styles.exitSearchText, settings.compactMode && styles.textSmall]}>{t('run.exitSearch')}</Text>
           </TouchableOpacity>
+        );
+      case 'general-tasks':
+        return (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.generalTasksRow} contentContainerStyle={{ gap: 10 }}>
+            {item.tasks.map((task: any) => (
+              <TouchableOpacity
+                key={task.id}
+                style={[styles.taskPill, task.isCompleted && styles.taskPillCompleted, settings.compactMode && styles.taskPillCompact]}
+                onPress={() => toggleTaskStatus(task.id, task.isCompleted, task.targetDate)}
+                onLongPress={() => handleTaskLongPress(task)}
+              >
+                <FontAwesome name={task.isCompleted ? "check-circle" : "circle-thin"} size={settings.compactMode ? 14 : 16} color={task.isCompleted ? ACCENT_GOLD : "#ccc"} />
+                <Text style={[styles.taskPillText, task.isCompleted && styles.taskPillTextCompleted, settings.compactMode && styles.textExtraSmall]}>{task.title}</Text>
+                {task.targetTime && <Text style={[styles.taskPillTime, settings.compactMode && styles.textExtraSmall]}>{task.targetTime}</Text>}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        );
+      case 'physical-checklist':
+        return (
+          <View style={styles.physicalChecklistContainer}>
+            <Text style={[styles.physicalChecklistTitle, settings.compactMode && styles.textSmall]}>{t('tasks.physicalChecklist') || 'Physical Tasks Checklist'}</Text>
+            {item.tasks.map((task: any) => (
+              <TouchableOpacity
+                key={task.id}
+                style={[styles.checklistRow, settings.compactMode && styles.checklistRowCompact]}
+                onPress={() => toggleTaskStatus(task.id, task.isCompleted, task.targetDate)}
+                onLongPress={() => handleTaskLongPress(task)}
+              >
+                <FontAwesome name={task.isCompleted ? "check-square-o" : "square-o"} size={settings.compactMode ? 18 : 22} color={task.isCompleted ? ACCENT_GOLD : ACCENT_GOLD} />
+                <Text style={[styles.checklistText, task.isCompleted && styles.checklistTextCompleted, settings.compactMode && styles.textSmall]}>
+                  {task.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         );
       case 'shopping-header':
         return (
@@ -479,7 +641,7 @@ export default function TheRunScreen() {
               name={isCollapsed ? 'caret-right' : 'caret-down'}
               size={settings.compactMode ? 16 : 20}
               color={LIGHT_GOLD}
-              style={{ width: 20 }}
+              style={{ width: 24, textAlign: 'center' }}
             />
             <Text
               numberOfLines={1}
@@ -490,36 +652,113 @@ export default function TheRunScreen() {
           </TouchableOpacity>
         );
       }
+      case 'person-header': {
+        return (
+          <View style={[styles.personHeaderRow, settings.compactMode && styles.personHeaderRowCompact]}>
+            <FontAwesome name="user" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} style={{ width: 24, textAlign: 'center' }} />
+            <Text style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact]}>
+              {item.person.name}
+            </Text>
+          </View>
+        );
+      }
+      case 'task-card': {
+        const po = item.po;
+        const threadLineStyle: any = {
+          position: 'absolute',
+          top: 0,
+          bottom: item.isLastInThread ? '50%' : 0,
+          width: 2,
+          backgroundColor: '#333',
+          ...(isRTL ? { right: 11 } : { left: 11 })
+        };
+        const contentPadding = isRTL 
+          ? { paddingRight: settings.compactMode ? 28 : 32, marginRight: 0 }
+          : { paddingLeft: settings.compactMode ? 28 : 32, marginLeft: 0 };
+
+        return (
+          <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
+            <View style={threadLineStyle} />
+            <View style={[styles.taskCardContainer, settings.compactMode && styles.taskCardContainerCompact]}>
+              <View style={styles.taskCardHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <FontAwesome name="list-ul" size={14} color={ACCENT_GOLD} style={{ marginEnd: 6 }} />
+                  <Text style={styles.taskCardTitle}>{t('tasks.otherMeetupTasks') || 'Meetup Tasks'}</Text>
+                </View>
+              </View>
+              <View style={styles.personTasksContainer}>
+                {po.tasks.map((task: any) => (
+                  <View key={task.id} style={[styles.personTaskRow, settings.compactMode && styles.personTaskRowCompact]}>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
+                      onPress={() => toggleTaskStatus(task.id, task.isCompleted, task.targetDate)}
+                      onLongPress={() => handleTaskLongPress(task)}
+                    >
+                      <FontAwesome name={task.isCompleted ? "check-square-o" : "square-o"} size={settings.compactMode ? 16 : 18} color={task.isCompleted ? ACCENT_GOLD : "#888"} />
+                      <Text style={[styles.personTaskText, task.isCompleted && styles.personTaskTextCompleted, settings.compactMode && styles.textSmall]}>
+                        {task.title}
+                      </Text>
+                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 12, marginStart: 10 }}>
+                      <TouchableOpacity onPress={() => handleEditTask(task)}>
+                        <FontAwesome name="edit" size={settings.compactMode ? 16 : 18} color={ACCENT_GOLD} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteTask(task.id, task.title)}>
+                        <FontAwesome name="trash" size={settings.compactMode ? 16 : 18} color="#ff4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </View>
+        );
+      }
       case 'order-card': {
         const po = item.po;
         const isSelected = selectedOrders.has(po.order.id);
+        const threadLineStyle: any = {
+          position: 'absolute',
+          top: 0,
+          bottom: item.isLastInThread ? '50%' : 0,
+          width: 2,
+          backgroundColor: '#333',
+          ...(isRTL ? { right: 11 } : { left: 11 })
+        };
+        const contentPadding = isRTL 
+          ? { paddingRight: settings.compactMode ? 28 : 32, marginRight: 0 }
+          : { paddingLeft: settings.compactMode ? 28 : 32, marginLeft: 0 };
+
         return (
-          <PersonOrderCard
-            po={po}
-            selectionMode={selectionMode}
-            isSelected={isSelected}
-            compactMode={settings.compactMode}
-            isRTL={isRTL}
-            t={t}
-            onLongPress={(orderId) => {
-              if (!selectionMode) {
-                setSelectionMode(true);
-                setSelectedOrders(new Set([orderId]));
-              }
-            }}
-            onPress={(orderId) => {
-              if (selectionMode) {
-                toggleOrderSelection(orderId);
-              }
-            }}
-            onEdit={handleEditOrder}
-            onDelete={handleDeleteOrder}
-            onPayAmount={setPayAmountOrder}
-            onMarkPaid={handleMarkAllPaid}
-            onMarkUnpaid={handleMarkAllUnpaid}
-            onUnknownPrice={setUnknownPricePerson}
-            onHistory={setLogPerson}
-          />
+            <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
+              <View style={threadLineStyle} />
+              <PersonOrderCard
+                po={po}
+                selectionMode={selectionMode}
+                isSelected={isSelected}
+                compactMode={settings.compactMode}
+                isRTL={isRTL}
+                t={t}
+                onLongPress={(orderId) => {
+                  if (!selectionMode) {
+                    setSelectionMode(true);
+                    setSelectedOrders(new Set([orderId]));
+                  }
+                }}
+                onPress={(orderId) => {
+                  if (selectionMode) {
+                    toggleOrderSelection(orderId);
+                  }
+                }}
+                onEdit={handleEditOrder}
+                onDelete={handleDeleteOrder}
+                onPayAmount={setPayAmountOrder}
+                onMarkPaid={handleMarkAllPaid}
+                onMarkUnpaid={handleMarkAllUnpaid}
+                onUnknownPrice={setUnknownPricePerson}
+                onHistory={setLogPerson}
+              />
+            </View>
         );
       }
       case 'empty-deliveries':
@@ -629,18 +868,25 @@ export default function TheRunScreen() {
       text += `\n📍 ${group.location}\n`;
       group.orders.forEach(po => {
         text += `  👤 ${po.person.name}:\n`;
-        po.items.forEach(i => {
-          const cost = i.unitPrice !== null ? `$${(i.unitPrice * i.quantity).toFixed(2)}` : 'TBD';
-          text += `    • ${i.quantity}x ${i.itemDef?.name} - ${cost} ${i.isPaid ? '✅' : '❌'}\n`;
-        });
-        text += `    Total: $${po.totalCost.toFixed(2)}${po.hasUnknownPriceItems ? ' + TBD' : ''}\n`;
+        if (po.items.length > 0) {
+          po.items.forEach(i => {
+            const cost = i.unitPrice !== null ? `$${(i.unitPrice * i.quantity).toFixed(2)}` : 'TBD';
+            text += `    • ${i.quantity}x ${i.itemDef?.name} - ${cost} ${i.isPaid ? '✅' : '❌'}\n`;
+          });
+          text += `    Total: $${po.totalCost.toFixed(2)}${po.hasUnknownPriceItems ? ' + TBD' : ''}\n`;
 
-        let balText = '';
-        if (po.person.balance < 0) balText = `You are owed: $${Math.abs(po.person.balance).toFixed(2)}`;
-        else if (po.person.balance > 0) balText = `You owe them: $${po.person.balance.toFixed(2)}`;
-        else balText = po.hasUnknownPriceItems ? 'Awaiting Prices' : 'Settled';
+          let balText = '';
+          if (po.person.balance < 0) balText = `You are owed: $${Math.abs(po.person.balance).toFixed(2)}`;
+          else if (po.person.balance > 0) balText = `You owe them: $${po.person.balance.toFixed(2)}`;
+          else balText = po.hasUnknownPriceItems ? 'Awaiting Prices' : 'Settled';
 
-        text += `    Balance: ${balText}\n`;
+          text += `    Balance: ${balText}\n`;
+        }
+        if (po.tasks && po.tasks.length > 0) {
+          po.tasks.forEach((t: any) => {
+            text += `    • [Task] ${t.title} ${t.isCompleted ? '✅' : '❌'}\n`;
+          });
+        }
       });
     });
 
@@ -881,9 +1127,11 @@ export default function TheRunScreen() {
           </View>
         )}
         {!selectionMode && (
-          <TouchableOpacity onPress={handleCopyRun} style={[styles.copyBtn, settings.compactMode && styles.paddingSmall]}>
-            <FontAwesome name="copy" size={settings.compactMode ? 18 : 20} color={ACCENT_GOLD} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 5 }}>
+            <TouchableOpacity onPress={handleCopyRun} style={[styles.copyBtn, settings.compactMode && styles.paddingSmall]}>
+              <FontAwesome name="copy" size={settings.compactMode ? 18 : 20} color={ACCENT_GOLD} />
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -1001,6 +1249,101 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     width: '100%',
   },
+  generalTasksRow: {
+    paddingHorizontal: 5,
+    marginBottom: 15,
+  },
+  taskPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#333',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+  },
+  taskPillCompact: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  taskPillCompleted: {
+    backgroundColor: '#2a2415',
+    borderColor: ACCENT_GOLD,
+  },
+  taskPillText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  taskPillTextCompleted: {
+    color: '#ccc',
+    textDecorationLine: 'line-through',
+  },
+  taskPillTime: {
+    color: ACCENT_GOLD,
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 5,
+  },
+  physicalChecklistContainer: {
+    backgroundColor: '#222',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  physicalChecklistTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: ACCENT_GOLD,
+    marginBottom: 10,
+  },
+  checklistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  checklistRowCompact: {
+    paddingVertical: 6,
+  },
+  checklistText: {
+    fontSize: 16,
+    color: '#fff',
+  },
+  checklistTextCompleted: {
+    color: '#888',
+    textDecorationLine: 'line-through',
+  },
+  personTasksContainer: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  personTaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  personTaskRowCompact: {
+    paddingVertical: 4,
+  },
+  personTaskText: {
+    color: '#fff',
+    fontSize: 15,
+    flexShrink: 1,
+  },
+  personTaskTextCompleted: {
+    color: '#888',
+    textDecorationLine: 'line-through',
+  },
   shoppingListTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -1021,8 +1364,8 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   locationGroup: { marginBottom: 25 },
-  locationHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginStart: 5 },
-  deliveryLocationTitle: { fontSize: 18, fontWeight: 'bold', color: LIGHT_GOLD, marginStart: 5 },
+  locationHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  deliveryLocationTitle: { fontSize: 18, fontWeight: 'bold', color: LIGHT_GOLD, marginStart: 8 },
   timingGroup: { marginBottom: 15 },
   timingTitle: { fontSize: 18, fontWeight: 'bold', color: ACCENT_GOLD, marginBottom: 5 },
   sourceGroup: {
@@ -1209,6 +1552,59 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 16,
     textAlign: 'center',
+    fontWeight: '500',
+  },
+  personHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 8,
+  },
+  personHeaderRowCompact: {
+    paddingVertical: 6,
+  },
+  personHeaderText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  personHeaderTextCompact: {
+    fontSize: 16,
+  },
+  taskCardContainer: {
+    backgroundColor: '#222',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: ACCENT_GOLD,
+    padding: 12,
+    overflow: 'hidden',
+  },
+  taskCardContainerCompact: {
+    padding: 8,
+  },
+  taskCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  taskCardTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: ACCENT_GOLD,
+  },
+  markAllCompleteBtn: {
+    marginTop: 8,
+    alignItems: 'center',
+    paddingVertical: 8,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  markAllCompleteText: {
+    color: ACCENT_GOLD,
+    fontSize: 13,
+    fontWeight: 'bold',
   },
   orderCreatedAt: { color: '#888', fontSize: 12 },
   orderCreatedAtCompact: { fontSize: 10 },
@@ -1303,48 +1699,46 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
             onPress={() => onPress(po.order.id)}
             style={[styles.personHeader, compactMode && styles.personHeaderCompact, selectionMode && isSelected && { backgroundColor: 'rgba(47, 149, 220, 0.15)' }]}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-              {selectionMode && (
-                <FontAwesome
-                  name={isSelected ? 'check-square-o' : 'square-o'}
-                  size={compactMode ? 20 : 24}
-                  color={isSelected ? ACCENT_GOLD : '#888'}
-                  style={{ marginEnd: 10 }}
-                />
-              )}
-              <View style={{ flex: 1, alignItems: 'flex-start', overflow: 'hidden', paddingEnd: 8, gap: 2 }}>
-                <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.personName, compactMode && styles.personNameCompact, { textAlign: isRTL ? 'right' : 'left' }]}>{po.person.name}</Text>
-                {po.deliveryPlace ? (
-                  <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.deliveryPlace, compactMode && styles.textExtraSmall, { textAlign: isRTL ? 'right' : 'left' }]}>📍 {po.deliveryPlace}</Text>
-                ) : null}
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                  <FontAwesome name="clock-o" size={compactMode ? 10 : 12} color="#888" />
-                  <Text style={[styles.orderCreatedAt, compactMode && styles.orderCreatedAtCompact]}>
-                    {" "}{t('modals.created')}: {po.order.createdAt ? formatDateTime(po.order.createdAt, isRTL ? 'ar' : 'en') : t('modals.notAvailable')}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', flex: 1 }}>
+                {selectionMode && (
+                  <FontAwesome
+                    name={isSelected ? 'check-square-o' : 'square-o'}
+                    size={compactMode ? 20 : 24}
+                    color={isSelected ? ACCENT_GOLD : '#888'}
+                    style={{ marginEnd: 10, marginTop: 2 }}
+                  />
+                )}
+                <View style={{ flex: 1, alignItems: 'flex-start', overflow: 'hidden', paddingEnd: 8, gap: 2 }}>
+                  <Text style={[styles.personTotal, compactMode && styles.personTotalCompact, { textAlign: isRTL ? 'right' : 'left' }]}>
+                    ${po.totalCost.toFixed(2)}{po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}
                   </Text>
+                  <View style={[styles.statusContainer, compactMode && { height: 16 }]}>
+                    <Text style={[styles.statusText, po.unpaidCost > 0 ? styles.statusUnpaid : styles.statusPaid, compactMode && styles.textExtraSmall, { textAlign: isRTL ? 'right' : 'left' }]}>
+                      {po.hasUnknownPriceItems ? t('run.statusAwaitingPrices') : po.unpaidCost > 0 ? t('run.statusUnpaid') : t('run.statusPaid')}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <FontAwesome name="clock-o" size={compactMode ? 10 : 12} color="#888" />
+                    <Text style={[styles.orderCreatedAt, compactMode && styles.orderCreatedAtCompact]}>
+                      {" "}{t('modals.created')}: {po.order.createdAt ? formatDateTime(po.order.createdAt, isRTL ? 'ar' : 'en') : t('modals.notAvailable')}
+                    </Text>
+                  </View>
                 </View>
               </View>
-            </View>
-            <View style={styles.costInfo}>
-              <View style={styles.orderActions}>
-                {!selectionMode && (
-                  <View style={{ flexDirection: 'row', gap: 15 }}>
-                    <TouchableOpacity onPress={() => onEdit(po.order, po.person)} style={styles.editOrderBtn}>
-                      <FontAwesome name="edit" size={compactMode ? 14 : 16} color={ACCENT_GOLD} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => onDelete(po.order.id, po.person.name, po.order.isPaid)} style={styles.deleteOrderBtn}>
-                      <FontAwesome name="trash" size={compactMode ? 14 : 16} color="#ff4444" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-                <Text style={[styles.personTotal, compactMode && styles.personTotalCompact]}>
-                  ${po.totalCost.toFixed(2)}{po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}
-                </Text>
-              </View>
-              <View style={[styles.statusContainer, compactMode && { height: 16 }]}>
-                <Text style={[styles.statusText, po.unpaidCost > 0 ? styles.statusUnpaid : styles.statusPaid, compactMode && styles.textExtraSmall]}>
-                  {po.hasUnknownPriceItems ? t('run.statusAwaitingPrices') : po.unpaidCost > 0 ? t('run.statusUnpaid') : t('run.statusPaid')}
-                </Text>
+              <View style={[styles.costInfo, { alignItems: isRTL ? 'flex-start' : 'flex-end', flex: 0 }]}>
+                <View style={styles.orderActions}>
+                  {!selectionMode && (
+                    <View style={{ flexDirection: 'row', gap: 15 }}>
+                      <TouchableOpacity onPress={() => onEdit(po.order, po.person)} style={styles.editOrderBtn}>
+                        <FontAwesome name="edit" size={compactMode ? 14 : 16} color={ACCENT_GOLD} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => onDelete(po.order.id, po.person.name, po.order.isPaid)} style={styles.deleteOrderBtn}>
+                        <FontAwesome name="trash" size={compactMode ? 14 : 16} color="#ff4444" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
               </View>
             </View>
           </TouchableOpacity>

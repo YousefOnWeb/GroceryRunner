@@ -73,3 +73,16 @@ export const transactions = sqliteTable('transactions', {
   type: text('type', { enum: ['PaymentReceived', 'OrderCost', 'ManualAdjustment'] }).notNull(),
   note: text('note'),
 });
+
+export const tasks = sqliteTable('tasks', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  type: text('type', { enum: ['physical_give', 'physical_take', 'meetup_task', 'general_task'] }).notNull(),
+  personId: text('personId').references(() => persons.id, { onDelete: 'cascade' }), // Nullable for general tasks
+  targetDate: text('targetDate'), // 'YYYY-MM-DD', nullable
+  targetTime: text('targetTime'), // 'HH:MM', nullable
+  locationPlace: text('locationPlace'), // Nullable
+  notificationId: text('notificationId'), // Nullable
+  isCompleted: integer('isCompleted', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('createdAt').notNull().default(sql`CURRENT_TIMESTAMP`),
+});

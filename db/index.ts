@@ -50,6 +50,44 @@ export const db = drizzle(expoDb, { schema });
     } catch (e) {
       // Column probably already exists
     }
+
+    // resilient check for tasks table entirely
+    try {
+      await db.run(sql`
+        CREATE TABLE IF NOT EXISTS tasks (
+          id TEXT PRIMARY KEY NOT NULL,
+          title TEXT NOT NULL,
+          type TEXT NOT NULL,
+          personId TEXT,
+          itemId TEXT,
+          quantity INTEGER DEFAULT 1 NOT NULL,
+          targetDate TEXT,
+          targetTime TEXT,
+          locationPlace TEXT,
+          notificationId TEXT,
+          isCompleted INTEGER DEFAULT 0 NOT NULL,
+          createdAt TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
+        )
+      `);
+    } catch (e) {}
+
+    const taskColumnsToAdd = [
+      'itemId TEXT',
+      'quantity INTEGER DEFAULT 1 NOT NULL',
+      'targetDate TEXT',
+      'targetTime TEXT',
+      'locationPlace TEXT',
+      'notificationId TEXT',
+      'isCompleted INTEGER DEFAULT 0 NOT NULL',
+      'personId TEXT'
+    ];
+    for (const colDef of taskColumnsToAdd) {
+      try {
+        await db.run(sql.raw(`ALTER TABLE tasks ADD COLUMN ${colDef}`));
+      } catch (e) {
+        // Column probably already exists
+      }
+    }
   } catch (err) {
     console.error('Migration error:', err);
   }

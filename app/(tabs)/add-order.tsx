@@ -1,22 +1,27 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import CreateItemModal from '@/components/CreateItemModal';
-import DropdownSelect from '@/components/DropdownSelect';
 import PersonModal from '@/components/PersonModal';
 import { Text, View, TextInput } from '@/components/Themed';
 import { db } from '@/db';
 import { api } from '@/db/api';
-import { items, orderItems, orders, personAliases, persons, itemAliases } from '@/db/schema';
-import { extractDateValue, formatDateLabel, getDefaultDate, getLocalDateString } from '@/utils/dates';
+import { items, orderItems, orders, personAliases, persons, itemAliases, tasks } from '@/db/schema';
+import { formatDateLabel, getDefaultDate, getLocalDateString } from '@/utils/dates';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, I18nManager } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, I18nManager, Switch } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSettings } from '@/utils/settings';
 import { useTranslation } from '@/utils/i18n';
 import SmartTextInput from '@/components/SmartTextInput';
 import { COMMON_GROCERY_CORPUS, COMMON_NAMES_CORPUS } from '@/utils/textMatching';
 import { ACCENT_GOLD, LIGHT_GOLD } from '@/constants/Colors';
+
+const InfoIcon = ({ title, message }: { title: string, message: string }) => (
+  <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={() => Alert.alert(title, message)} style={{ marginLeft: 5 }}>
+    <FontAwesome name="question-circle-o" size={14} color="#888" />
+  </TouchableOpacity>
+);
 
 export default function AddOrderScreen() {
   const { data: people } = useLiveQuery(db.select().from(persons));
@@ -25,33 +30,42 @@ export default function AddOrderScreen() {
   const { data: itemAliasesList } = useLiveQuery(db.select().from(itemAliases));
   const { data: allOrders } = useLiveQuery(db.select().from(orders));
   const { data: allOrderItems } = useLiveQuery(db.select().from(orderItems));
-  const [refreshKey, setRefreshKey] = useState(0);
+  const { data: allTasks } = useLiveQuery(db.select().from(tasks));
+
   const { settings } = useSettings();
-  const { t } = useTranslation();
-  const params = useLocalSearchParams<{ personId?: string; date?: string; edit?: string }>();
+  const { t, isRTL } = useTranslation();
+  const params = useLocalSearchParams<{ personId?: string; date?: string; edit?: string; mode?: string; editTaskId?: string }>();
   const router = useRouter();
 
-  const [targetDate, setTargetDate] = useState(getDefaultDate());
+  // Mode state
+  const [formMode, setFormMode] = useState<'order' | 'task'>('order');
+
+  // Shared state
+  const [targetDate, setTargetDate] = useState<Date>(getDefaultDate());
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [cart, setCart] = useState<{ item: any; quantity: number }[]>([]);
-  
-  // Item search state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [itemModalVisible, setItemModalVisible] = useState(false);
   const [activeSearch, setActiveSearch] = useState<'person' | 'item' | 'place' | null>(null);
 
   // Person search state
   const [personSearchQuery, setPersonSearchQuery] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
 
-  // Delivery place
-  const [deliveryPlace, setDeliveryPlace] = useState('');
-
-  // Create person modal
+  // Create modals
+  const [itemModalVisible, setItemModalVisible] = useState(false);
   const [personModalVisible, setPersonModalVisible] = useState(false);
 
+  // ORDER STATE
+  const [cart, setCart] = useState<{ item: any; quantity: number }[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [deliveryPlace, setDeliveryPlace] = useState('');
   const [editModeOrderId, setEditModeOrderId] = useState<string | null>(null);
   const [topItems, setTopItems] = useState<any[]>([]);
+
+  // TASK STATE
+  const [editTaskId, setEditTaskId] = useState<string | null>(null);
+  const [requiresMeeting, setRequiresMeeting] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [targetTime, setTargetTime] = useState<Date | null>(null);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   const targetDateDb = getLocalDateString(targetDate);
   const existingOrder = useMemo(() => {
@@ -59,27 +73,77 @@ export default function AddOrderScreen() {
     return allOrders.find(o => o.personId === selectedPersonId && o.targetDate === targetDateDb);
   }, [allOrders, selectedPersonId, targetDateDb]);
 
-  React.useEffect(() => {
-    if (params.edit && params.personId && params.date) {
+  // Handle URL Params mapping
+  useEffect(() => {
+    if (params.mode === 'task') setFormMode('task');
+    else if (params.mode === 'order') setFormMode('order');
+
+    if (params.editTaskId) {
+      setFormMode('task');
+      setEditTaskId(params.editTaskId);
+    }
+  }, [params.mode, params.editTaskId]);
+
+  useEffect(() => {
+    if (params.edit && params.personId && params.date && !params.editTaskId) {
       const d = new Date(params.date);
       if (!isNaN(d.getTime())) {
         setTargetDate(d);
         setSelectedPersonId(params.personId);
         setEditModeOrderId(null); // Force reset to allow re-loading
+        setFormMode('order');
       }
     }
-  }, [params.edit, params.personId, params.date]);
+  }, [params.edit, params.personId, params.date, params.editTaskId]);
 
-  React.useEffect(() => {
-    if (params.edit && existingOrder && !editModeOrderId) {
+  // Auto-load order when selecting a person for an existing date
+  useEffect(() => {
+    if (formMode === 'order' && params.edit && existingOrder && !editModeOrderId) {
       handleLoadExistingOrder();
-      // Clear the edit param so we don't re-trigger on tab switch
       router.setParams({ edit: undefined });
     }
-  }, [existingOrder, params.edit, editModeOrderId]);
+  }, [existingOrder, params.edit, editModeOrderId, formMode]);
 
-  React.useEffect(() => {
-    if (selectedPersonId) {
+  // Load Task for editing
+  useEffect(() => {
+    if (formMode === 'task' && editTaskId && allTasks) {
+      const task = allTasks.find(t => t.id === editTaskId);
+      if (task) {
+        setTaskTitle(task.title || '');
+        setRequiresMeeting(task.type === 'meetup_task');
+        setSelectedPersonId(task.personId || null);
+        if (task.personId) {
+          const p = people?.find(p => p.id === task.personId);
+          setPersonSearchQuery(p ? p.name : '');
+        } else {
+          setPersonSearchQuery('');
+        }
+        
+        if (task.targetDate) {
+          const [year, month, day] = task.targetDate.split('-').map(Number);
+          setTargetDate(new Date(year, month - 1, day));
+        } else {
+          setTargetDate(getDefaultDate()); // default to today if null
+        }
+        
+        if (task.targetTime) {
+          const [hours, minutes] = task.targetTime.split(':').map(Number);
+          const d = new Date();
+          d.setHours(hours, minutes, 0, 0);
+          setTargetTime(d);
+        } else {
+          setTargetTime(null);
+        }
+        
+        setDeliveryPlace(task.locationPlace || '');
+        setActiveSearch(null);
+      }
+    }
+  }, [formMode, editTaskId, allTasks, people]);
+
+  // Fetch top items for order
+  useEffect(() => {
+    if (selectedPersonId && formMode === 'order') {
       api.getTopItemsForPerson(selectedPersonId)
         .then(setTopItems)
         .catch(err => {
@@ -89,7 +153,7 @@ export default function AddOrderScreen() {
     } else {
       setTopItems([]);
     }
-  }, [selectedPersonId]);
+  }, [selectedPersonId, formMode]);
 
   const personCorpus = useMemo(() => {
     const dbNames = people?.map(p => p.name) || [];
@@ -164,7 +228,7 @@ export default function AddOrderScreen() {
   const selectPerson = (personId: string) => {
     setSelectedPersonId(personId);
     const person = people?.find(p => p.id === personId);
-    if (person?.typicalPlace) setDeliveryPlace(person.typicalPlace);
+    if (person?.typicalPlace && !deliveryPlace) setDeliveryPlace(person.typicalPlace);
     setActiveSearch(null);
   };
 
@@ -188,6 +252,19 @@ export default function AddOrderScreen() {
       }
       return prev.filter((i) => i.item.id !== itemId);
     });
+  };
+
+  const resetForm = () => {
+    setCart([]);
+    setSelectedPersonId(null);
+    setPersonSearchQuery('');
+    setEditModeOrderId(null);
+    setEditTaskId(null);
+    setDeliveryPlace('');
+    setTaskTitle('');
+    setTargetTime(null);
+    setRequiresMeeting(false);
+    router.setParams({ mode: undefined, editTaskId: undefined, edit: undefined, personId: undefined, date: undefined });
   };
 
   const handleSaveOrder = async () => {
@@ -214,11 +291,7 @@ export default function AddOrderScreen() {
               onPress: async () => {
                 try {
                   await api.deleteOrder(editModeOrderId);
-                  setCart([]);
-                  setSelectedPersonId(null);
-                  setPersonSearchQuery('');
-                  setEditModeOrderId(null);
-                  setDeliveryPlace('');
+                  resetForm();
                 } catch (e) {
                   console.error(e);
                   Alert.alert(t('common.error'), t('run.failedDelete'));
@@ -248,14 +321,65 @@ export default function AddOrderScreen() {
         Alert.alert(t('common.success'), t('addOrder.successSave'));
       }
       
-      setCart([]);
-      setSelectedPersonId(null);
-      setPersonSearchQuery('');
-      setEditModeOrderId(null);
-      setDeliveryPlace('');
+      resetForm();
     } catch (e) {
       console.error(e);
       Alert.alert(t('common.error'), t('addOrder.errorSave'));
+    }
+  };
+
+  const handleSaveTask = async () => {
+    if (requiresMeeting && !selectedPersonId) {
+      Alert.alert(t('common.error'), t('tasks.errorNoPerson') || 'Please select a person.');
+      return;
+    }
+
+    if (requiresMeeting && !deliveryPlace.trim()) {
+      Alert.alert(t('common.error'), t('addOrder.locationMandatoryError') || 'Location is required when meeting a person.');
+      return;
+    }
+
+    let finalTitle = taskTitle.trim();
+
+    if (!finalTitle) {
+      Alert.alert(t('common.error'), t('tasks.errorNoTitle') || 'Please enter a title or select an item.');
+      return;
+    }
+
+    try {
+      const dateStr = getLocalDateString(targetDate);
+      let timeStr = null;
+      if (targetTime) {
+        timeStr = `${targetTime.getHours().toString().padStart(2, '0')}:${targetTime.getMinutes().toString().padStart(2, '0')}`;
+      }
+      
+      const taskType = requiresMeeting ? 'meetup_task' : 'general_task';
+
+      if (editTaskId) {
+        await api.updateTask(editTaskId, {
+          title: finalTitle,
+          type: taskType,
+          personId: requiresMeeting ? selectedPersonId : null,
+          targetDate: dateStr,
+          targetTime: timeStr,
+          locationPlace: requiresMeeting ? deliveryPlace.trim() : null
+        });
+        Alert.alert(t('common.success'), t('addOrder.successUpdate') || 'Updated successfully.');
+      } else {
+        await api.addTask(
+          finalTitle,
+          taskType,
+          requiresMeeting ? selectedPersonId : null,
+          dateStr,
+          timeStr,
+          requiresMeeting ? deliveryPlace.trim() : null
+        );
+        Alert.alert(t('common.success'), t('addOrder.successSave') || 'Saved successfully.');
+      }
+      resetForm();
+    } catch (e) {
+      console.error(e);
+      Alert.alert(t('common.error'), t('tasks.errorSave') || 'Failed to save task.');
     }
   };
 
@@ -264,8 +388,10 @@ export default function AddOrderScreen() {
     try {
       const newItem = await api.addItem(name, defaultPrice, source, timing, aliases);
       if (newItem && newItem.length > 0) {
-        addToCart(newItem[0]);
-        setSearchQuery('');
+        if (formMode === 'order') {
+          addToCart(newItem[0]);
+          setSearchQuery('');
+        }
       }
     } catch (e) {
       Alert.alert(t('common.error'), t('addOrder.errorCreateItem'));
@@ -284,16 +410,21 @@ export default function AddOrderScreen() {
     setShowDatePicker(false);
     if (selectedDate) {
       setTargetDate(selectedDate);
-      setEditModeOrderId(null);
+      if (formMode === 'order') setEditModeOrderId(null);
     }
   };
 
+  const onTimeChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    setShowTimePicker(false);
+    if (selectedDate) setTargetTime(selectedDate);
+  };
+
   const filteredCatalog = useMemo(() => {
+    if (formMode !== 'order') return [];
     const q = searchQuery.toLowerCase().trim();
     const baseList = catalog || [];
 
     if (!q) {
-      // Prioritize top items when query is empty
       const topIds = new Set(topItems.map(i => i.id));
       const remaining = baseList.filter(i => !topIds.has(i.id));
       return [...topItems, ...remaining];
@@ -310,15 +441,19 @@ export default function AddOrderScreen() {
       ].join(' ').toLowerCase();
       return searchString.includes(q);
     });
-  }, [catalog, searchQuery, itemAliasesList, topItems]);
+  }, [catalog, searchQuery, formMode, itemAliasesList, topItems]);
   
-  const exactItemMatch = filteredCatalog.find(i => i.name.toLowerCase() === searchQuery.toLowerCase().trim());
+  const exactItemMatch = useMemo(() => {
+    if (formMode !== 'order') return undefined;
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return undefined;
+    return filteredCatalog.find(i => i.name.toLowerCase() === q);
+  }, [filteredCatalog, searchQuery, formMode]);
 
   const filteredPeople = useMemo(() => {
     if (!people || !personSearchQuery.trim()) return [];
     const q = personSearchQuery.toLowerCase().trim();
 
-    // Get person IDs that match by alias
     const aliasMatchedIds = new Set(
       allAliases
         ?.filter(a => a.alias.toLowerCase().includes(q))
@@ -355,6 +490,243 @@ export default function AddOrderScreen() {
     return match?.alias || null;
   };
 
+  const renderPersonSelection = () => (
+    <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
+      <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>
+        {formMode === 'order' ? t('addOrder.step1Title') : (t('addOrder.step1TaskTitle') || '1. Person met on task')}
+      </Text>
+      {(!selectedPersonId || activeSearch === 'person') ? (
+        <>
+          <View style={[styles.searchRow, settings.compactMode && styles.searchRowCompact]}>
+            <SmartTextInput
+              containerStyle={{ flex: 1 }}
+              style={[styles.input, settings.compactMode && styles.inputCompact, { marginBottom: 0 }]}
+              value={personSearchQuery}
+              onChangeText={setPersonSearchQuery}
+              onFocus={() => setActiveSearch('person')}
+              onBlur={handleBlur}
+              placeholder={t('addOrder.searchPersonPlaceholder')}
+              placeholderTextColor="#888"
+              corpus={personCorpus}
+              compactMode={settings.compactMode}
+            />
+            {personSearchQuery.trim().length > 0 && !exactPersonMatch && (
+              <TouchableOpacity style={[styles.addButton, settings.compactMode && styles.addButtonCompact]} onPress={() => setPersonModalVisible(true)}>
+                <Text style={[styles.addButtonText, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.addBtn')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {activeSearch === 'person' && filteredPeople.length > 0 && (
+            <View style={[styles.grid, settings.compactMode && styles.gridCompact, { marginTop: 10 }]}>
+              {filteredPeople.map((p) => {
+                const matchedAlias = getMatchingAlias(p.id);
+                return (
+                  <TouchableOpacity key={p.id} style={[styles.gridItemPerson, settings.compactMode && styles.gridItemPersonCompact]} onPress={() => selectPerson(p.id)}>
+                    <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.gridItemName, settings.compactMode && styles.textSmall]}>{p.name}</Text>
+                    {matchedAlias && (
+                      <Text numberOfLines={1} ellipsizeMode="tail" style={styles.gridItemAlias}>({matchedAlias})</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </>
+      ) : selectedPerson && (
+        <View style={[styles.selectedRow, settings.compactMode && styles.selectedRowCompact]}>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.selectedText, settings.compactMode && styles.textSmall, { flexShrink: 1, marginEnd: 10 }]}>{selectedPerson.name}</Text>
+          <TouchableOpacity onPress={() => { setSelectedPersonId(null); setPersonSearchQuery(''); }}>
+            <Text style={[styles.changeBtnText, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.changeBtn')}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderLocationSelection = () => (
+    <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
+      <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>
+        {formMode === 'order' ? t('addOrder.stepDeliverToTitle') : (t('addOrder.stepPlaceMetAtTitle') || 'Place met at')}
+      </Text>
+      {(!deliveryPlace || activeSearch === 'place') ? (
+        <>
+          <TextInput
+            style={[styles.input, settings.compactMode && styles.inputCompact]}
+            value={deliveryPlace}
+            onChangeText={setDeliveryPlace}
+            onFocus={() => setActiveSearch('place')}
+            onBlur={handleBlur}
+            placeholder={t('addOrder.deliveryPlaceholder')}
+            placeholderTextColor="#888"
+          />
+          {activeSearch === 'place' && filteredPlaces.length > 0 && (
+            <View style={styles.suggestionsContainer}>
+              {filteredPlaces.map((s, i) => (
+                <TouchableOpacity key={i} style={styles.suggestionItem} onPress={() => { setDeliveryPlace(s); setActiveSearch(null); }}>
+                  <Text style={styles.suggestionText}>{s}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </>
+      ) : (
+        <View style={[styles.selectedRow, settings.compactMode && styles.selectedRowCompact]}>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.selectedText, settings.compactMode && styles.textSmall, { flexShrink: 1, marginEnd: 10 }]}>{deliveryPlace}</Text>
+          <TouchableOpacity onPress={() => { setActiveSearch('place'); }}>
+            <Text style={[styles.changeBtnText, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.changeBtn') || 'Change'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderOrderForm = () => (
+    <>
+      {(!activeSearch || activeSearch === 'person') && renderPersonSelection()}
+      
+      {!activeSearch && (
+        <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
+          <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.step2Title')}</Text>
+          <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact]}>
+            <Text style={[styles.dateDisplayText, settings.compactMode && styles.textSmall]}>{formatDateLabel(targetDate, t, t('modals.daysShort'))}</Text>
+            <FontAwesome name="calendar" size={16} color={ACCENT_GOLD} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {selectedPersonId && (!activeSearch || activeSearch === 'place') && renderLocationSelection()}
+
+      {!activeSearch && existingOrder && editModeOrderId !== existingOrder.id && (
+        <View style={styles.warningBanner}>
+          <Text style={styles.warningText}>{t('addOrder.warningExists')}</Text>
+          <TouchableOpacity style={styles.loadBtn} onPress={handleLoadExistingOrder}><Text style={styles.loadBtnText}>{t('addOrder.editBtn')}</Text></TouchableOpacity>
+        </View>
+      )}
+
+      {(!activeSearch || activeSearch === 'item') && (
+        <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
+          <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.step3Title')}</Text>
+          <View style={[styles.searchRow, settings.compactMode && styles.searchRowCompact]}>
+            <SmartTextInput
+              containerStyle={{ flex: 1 }}
+              style={[styles.input, settings.compactMode && styles.inputCompact, { marginBottom: 0 }]}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => setActiveSearch('item')}
+              onBlur={handleBlur}
+              placeholder={t('addOrder.searchItemsPlaceholder')}
+              placeholderTextColor="#888"
+              corpus={itemCorpus}
+              compactMode={settings.compactMode}
+            />
+            {searchQuery.trim().length > 0 && !exactItemMatch && (
+              <TouchableOpacity style={[styles.addButton, settings.compactMode && styles.addButtonCompact]} onPress={() => setItemModalVisible(true)}>
+                <Text style={[styles.addButtonText, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.addBtn')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={[styles.grid, settings.compactMode && styles.gridCompact]}>
+            {(activeSearch === 'item' ? filteredCatalog : filteredCatalog.slice(0, 12)).map((item) => {
+              const inCart = cart.find((c) => c.item.id === item.id);
+              return (
+                <TouchableOpacity key={item.id} style={[styles.gridItem, settings.compactMode && styles.gridItemCompact]} onPress={() => addToCart(item)}>
+                  <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.gridItemName, settings.compactMode && styles.textSmall]}>{item.name}</Text>
+                  {inCart && <View style={[styles.badge, settings.compactMode && styles.badgeCompact]}><Text style={styles.badgeText}>{inCart.quantity}</Text></View>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
+      {!activeSearch && cart.length > 0 && (
+        <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
+          <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.cartTitle')}</Text>
+          {cart.map((c) => (
+            <View key={c.item.id} style={[styles.cartRow, settings.compactMode && styles.cartRowCompact]}>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cartText, settings.compactMode && styles.textSmall, { flexShrink: 1, marginEnd: 10 }]}>{c.item.name}</Text>
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity onPress={() => removeFromCart(c.item.id)} style={styles.stepperBtn}>
+                  <Text style={styles.stepperBtnText}>-</Text>
+                </TouchableOpacity>
+                <Text style={styles.stepperValue}>{c.quantity}</Text>
+                <TouchableOpacity onPress={() => addToCart(c.item)} style={styles.stepperBtn}>
+                  <Text style={styles.stepperBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </>
+  );
+
+  const renderTaskForm = () => (
+    <>
+      <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall, { marginBottom: 0 }]}>{t('addOrder.requiresMeeting') || 'Requires Meeting a Person'}</Text>
+          <Switch
+            value={requiresMeeting}
+            onValueChange={setRequiresMeeting}
+            trackColor={{ false: '#444', true: ACCENT_GOLD + '80' }}
+            thumbColor={requiresMeeting ? ACCENT_GOLD : '#888'}
+          />
+        </View>
+      </View>
+
+      {requiresMeeting && (!activeSearch || activeSearch === 'person') && renderPersonSelection()}
+      {requiresMeeting && selectedPersonId && (!activeSearch || activeSearch === 'place') && renderLocationSelection()}
+
+      {!activeSearch && (
+        <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
+          <View>
+            <Text style={[styles.label, settings.compactMode && styles.textSmall]}>
+              {t('tasks.titleOrDescription') || 'Title / Description'} *
+            </Text>
+            <TextInput
+              style={[styles.input, settings.compactMode && styles.inputCompact]}
+              value={taskTitle}
+              onChangeText={setTaskTitle}
+              placeholder={t('tasks.titlePlaceholder') || 'What needs to be done?'}
+              placeholderTextColor="#888"
+            />
+          </View>
+        </View>
+      )}
+
+      {!activeSearch && (
+        <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
+          <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('tasks.dateLabel') || 'Date'}</Text>
+          <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact]}>
+            <Text style={[styles.dateDisplayText, settings.compactMode && styles.textSmall]}>
+              {formatDateLabel(targetDate, t, t('modals.daysShort'))}
+            </Text>
+            <FontAwesome name="calendar" size={16} color={ACCENT_GOLD} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!activeSearch && (
+        <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
+          <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('tasks.timeLabel') || 'Time'}</Text>
+          <TouchableOpacity onPress={() => setShowTimePicker(true)} style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact]}>
+            <Text style={[styles.dateDisplayText, settings.compactMode && styles.textSmall, !targetTime && { color: '#888' }]}>
+              {targetTime ? `${targetTime.getHours().toString().padStart(2, '0')}:${targetTime.getMinutes().toString().padStart(2, '0')}` : (t('common.none') || 'None')}
+            </Text>
+            {targetTime ? (
+              <TouchableOpacity onPress={() => setTargetTime(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <FontAwesome name="times-circle" size={16} color="#888" />
+              </TouchableOpacity>
+            ) : (
+              <FontAwesome name="clock-o" size={16} color={ACCENT_GOLD} />
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+    </>
+  );
+
   return (
     <KeyboardAvoidingView 
       style={styles.container}
@@ -362,6 +734,27 @@ export default function AddOrderScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
     >
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
+        
+        {/* Toggle Mode Segment */}
+        <View style={[styles.modeToggleContainer, settings.compactMode && styles.modeToggleContainerCompact]}>
+          <TouchableOpacity 
+            style={[styles.modeBtn, formMode === 'order' && styles.modeBtnActive]} 
+            onPress={() => setFormMode('order')}
+          >
+            <Text style={[styles.modeBtnText, formMode === 'order' && styles.modeBtnTextActive]}>
+              {t('addOrder.addOrderMode') || 'Add Order'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.modeBtn, formMode === 'task' && styles.modeBtnActive]} 
+            onPress={() => setFormMode('task')}
+          >
+            <Text style={[styles.modeBtnText, formMode === 'task' && styles.modeBtnTextActive]}>
+              {t('addOrder.addTaskMode') || 'Add Task'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {activeSearch && (
           <TouchableOpacity 
             style={[styles.exitSearchBtn, settings.compactMode && styles.exitSearchBtnCompact]} 
@@ -375,166 +768,24 @@ export default function AddOrderScreen() {
           </TouchableOpacity>
         )}
 
-        {(!activeSearch || activeSearch === 'person') && (
-          <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
-            <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.step1Title')}</Text>
-            <View style={[styles.searchRow, settings.compactMode && styles.searchRowCompact]}>
-              <SmartTextInput
-                containerStyle={{ flex: 1 }}
-                style={[styles.input, settings.compactMode && styles.inputCompact, { marginBottom: 0 }]}
-                value={personSearchQuery}
-                onChangeText={setPersonSearchQuery}
-                onFocus={() => setActiveSearch('person')}
-                onBlur={handleBlur}
-                placeholder={t('addOrder.searchPersonPlaceholder')}
-                placeholderTextColor="#888"
-                corpus={personCorpus}
-                compactMode={settings.compactMode}
-              />
-              {personSearchQuery.trim().length > 0 && !exactPersonMatch && (
-                <TouchableOpacity style={[styles.addButton, settings.compactMode && styles.addButtonCompact]} onPress={() => setPersonModalVisible(true)}>
-                  <Text style={[styles.addButtonText, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.addBtn')}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {activeSearch === 'person' && filteredPeople.length > 0 && (
-              <View style={[styles.grid, settings.compactMode && styles.gridCompact, { marginTop: 10 }]}>
-                {filteredPeople.map((p) => {
-                  const matchedAlias = getMatchingAlias(p.id);
-                  return (
-                    <TouchableOpacity key={p.id} style={[styles.gridItemPerson, settings.compactMode && styles.gridItemPersonCompact]} onPress={() => selectPerson(p.id)}>
-                      <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.gridItemName, settings.compactMode && styles.textSmall]}>{p.name}</Text>
-                      {matchedAlias && (
-                        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.gridItemAlias}>({matchedAlias})</Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-
-            {!activeSearch && selectedPerson && (
-              <View style={[styles.selectedRow, settings.compactMode && styles.selectedRowCompact]}>
-                <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.selectedText, settings.compactMode && styles.textSmall, { flexShrink: 1, marginEnd: 10 }]}>{selectedPerson.name}</Text>
-                <TouchableOpacity onPress={() => { setSelectedPersonId(null); setPersonSearchQuery(''); }}>
-                  <Text style={[styles.changeBtnText, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.changeBtn')}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        )}
-
-        {!activeSearch && (
-          <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
-            <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.step2Title')}</Text>
-            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact]}>
-              <Text style={[styles.dateDisplayText, settings.compactMode && styles.textSmall]}>{formatDateLabel(targetDate, t, t('modals.daysShort'))}</Text>
-              <FontAwesome name="calendar" size={16} color={ACCENT_GOLD} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {showDatePicker && <DateTimePicker value={targetDate} mode="date" display="default" onChange={onDateChange} />}
-
-        {selectedPersonId && (!activeSearch || activeSearch === 'place') && (
-          <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
-            <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.stepDeliverToTitle')}</Text>
-            <TextInput
-              style={[styles.input, settings.compactMode && styles.inputCompact]}
-              value={deliveryPlace}
-              onChangeText={setDeliveryPlace}
-              onFocus={() => setActiveSearch('place')}
-              onBlur={handleBlur}
-              placeholder={t('addOrder.deliveryPlaceholder')}
-              placeholderTextColor="#888"
-            />
-            {activeSearch === 'place' && filteredPlaces.length > 0 && (
-              <View style={styles.suggestionsContainer}>
-                {filteredPlaces.map((s, i) => (
-                  <TouchableOpacity key={i} style={styles.suggestionItem} onPress={() => { setDeliveryPlace(s); setActiveSearch(null); }}>
-                    <Text style={styles.suggestionText}>{s}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-
-        {!activeSearch && existingOrder && editModeOrderId !== existingOrder.id && (
-          <View style={styles.warningBanner}>
-            <Text style={styles.warningText}>{t('addOrder.warningExists')}</Text>
-            <TouchableOpacity style={styles.loadBtn} onPress={handleLoadExistingOrder}><Text style={styles.loadBtnText}>{t('addOrder.editBtn')}</Text></TouchableOpacity>
-          </View>
-        )}
-
-        {(!activeSearch || activeSearch === 'item') && (
-          <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
-            <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.step3Title')}</Text>
-            <View style={[styles.searchRow, settings.compactMode && styles.searchRowCompact]}>
-              <SmartTextInput
-                containerStyle={{ flex: 1 }}
-                style={[styles.input, settings.compactMode && styles.inputCompact, { marginBottom: 0 }]}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onFocus={() => setActiveSearch('item')}
-                onBlur={handleBlur}
-                placeholder={t('addOrder.searchItemsPlaceholder')}
-                placeholderTextColor="#888"
-                corpus={itemCorpus}
-                compactMode={settings.compactMode}
-              />
-              {searchQuery.trim().length > 0 && !exactItemMatch && (
-                <TouchableOpacity style={[styles.addButton, settings.compactMode && styles.addButtonCompact]} onPress={() => setItemModalVisible(true)}>
-                  <Text style={[styles.addButtonText, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.addBtn')}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={[styles.grid, settings.compactMode && styles.gridCompact]}>
-              {(activeSearch === 'item' ? filteredCatalog : filteredCatalog.slice(0, 12)).map((item) => {
-                const inCart = cart.find((c) => c.item.id === item.id);
-                return (
-                  <TouchableOpacity key={item.id} style={[styles.gridItem, settings.compactMode && styles.gridItemCompact]} onPress={() => addToCart(item)}>
-                    <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.gridItemName, settings.compactMode && styles.textSmall]}>{item.name}</Text>
-                    {inCart && <View style={[styles.badge, settings.compactMode && styles.badgeCompact]}><Text style={styles.badgeText}>{inCart.quantity}</Text></View>}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {!activeSearch && cart.length > 0 && (
-          <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
-            <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.cartTitle')}</Text>
-            {cart.map((c) => (
-              <View key={c.item.id} style={[styles.cartRow, settings.compactMode && styles.cartRowCompact]}>
-                <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cartText, settings.compactMode && styles.textSmall, { flexShrink: 1, marginEnd: 10 }]}>{c.item.name}</Text>
-                <View style={styles.cartActions}>
-                  <TouchableOpacity onPress={() => removeFromCart(c.item.id)} style={[styles.cartBtn, settings.compactMode && styles.cartBtnCompact]}>
-                    <FontAwesome name="minus" size={settings.compactMode ? 10 : 12} />
-                  </TouchableOpacity>
-                  <Text style={[styles.cartQuantity, settings.compactMode && styles.cartQuantityCompact]}>{c.quantity}</Text>
-                  <TouchableOpacity onPress={() => addToCart(c.item)} style={[styles.cartBtn, settings.compactMode && styles.cartBtnCompact]}>
-                    <FontAwesome name="plus" size={settings.compactMode ? 10 : 12} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
+        {formMode === 'order' ? renderOrderForm() : renderTaskForm()}
       </ScrollView>
 
       {!activeSearch && (
         <TouchableOpacity 
           style={[styles.saveButton, settings.compactMode && styles.saveButtonCompact]} 
-          onPress={handleSaveOrder}
+          onPress={formMode === 'order' ? handleSaveOrder : handleSaveTask}
         >
           <Text style={[styles.saveButtonText, settings.compactMode && styles.textSmall]}>
-            {editModeOrderId ? t('addOrder.saveEdit') : t('addOrder.saveOrder')}
+            {formMode === 'order' 
+              ? (editModeOrderId ? t('addOrder.saveEdit') : t('addOrder.saveOrder'))
+              : (editTaskId ? t('common.save') : (t('addOrder.addTaskMode') || 'Add Task'))}
           </Text>
         </TouchableOpacity>
       )}
+
+      {showDatePicker && <DateTimePicker value={targetDate} mode="date" display="default" onChange={onDateChange} />}
+      {showTimePicker && <DateTimePicker value={targetTime || new Date()} mode="time" display="default" onChange={onTimeChange} />}
 
       <CreateItemModal visible={itemModalVisible} initialName={searchQuery} onCancel={() => setItemModalVisible(false)} onSubmit={handleCreateItemSubmit} />
       <PersonModal visible={personModalVisible} mode="create" initialName={personSearchQuery} onCancel={() => setPersonModalVisible(false)} onDone={handleCreatePersonDone} />
@@ -544,8 +795,42 @@ export default function AddOrderScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  modeToggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#333',
+    margin: 15,
+    borderRadius: 12,
+    padding: 4,
+  },
+  modeToggleContainerCompact: {
+    margin: 10,
+    borderRadius: 8,
+  },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modeBtnActive: {
+    backgroundColor: ACCENT_GOLD,
+  },
+  modeBtnText: {
+    color: '#aaa',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  modeBtnTextActive: {
+    color: '#000',
+  },
+  label: {
+    fontSize: 14,
+    color: '#aaa',
+    marginBottom: 6,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
   section: { padding: 15, borderBottomWidth: 1, borderBottomColor: '#333' },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#fff' },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: '#fff', textAlign: I18nManager.isRTL ? 'right' : 'left' },
   selectedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#333', padding: 12, borderRadius: 8 },
   selectedText: { color: ACCENT_GOLD, fontSize: 18, fontWeight: 'bold' },
   changeBtnText: { color: '#aaa', fontSize: 14 },
@@ -564,13 +849,13 @@ const styles = StyleSheet.create({
   cartActions: { flexDirection: 'row', alignItems: 'center' },
   cartBtn: { backgroundColor: '#ccc', padding: 8, borderRadius: 15 },
   cartQuantity: { marginHorizontal: 15, fontSize: 18, color: '#fff' },
-  saveButton: { backgroundColor: '#28a745', padding: 20, alignItems: 'center', margin: 15, borderRadius: 10 },
-  saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
+  saveButton: { backgroundColor: ACCENT_GOLD, padding: 20, alignItems: 'center', margin: 15, borderRadius: 10, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 2 },
+  saveButtonText: { color: '#000', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
   warningBanner: { backgroundColor: '#4a2f00', padding: 15, marginHorizontal: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ff9800' },
   warningText: { color: '#fff', marginBottom: 10 },
   loadBtn: { backgroundColor: '#ff9800', padding: 10, borderRadius: 5, alignItems: 'center' },
   loadBtnText: { color: '#000', fontWeight: 'bold' },
-  dateDisplay: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#333', padding: 12, borderRadius: 8, gap: 10 },
+  dateDisplay: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#333', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#444' },
   dateDisplayText: { color: '#fff', fontSize: 16 },
   exitSearchBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 15, backgroundColor: '#1a1a1a', borderBottomWidth: 1, borderBottomColor: '#333' },
   exitSearchText: { color: ACCENT_GOLD, fontWeight: 'bold' },
@@ -579,6 +864,10 @@ const styles = StyleSheet.create({
   suggestionItem: { padding: 10 },
   suggestionText: { color: '#fff' },
   gridItemAlias: { color: LIGHT_GOLD, textAlign: 'center', fontSize: 11, fontStyle: 'italic', marginTop: 2 },
+  stepperContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#333', borderRadius: 8, borderWidth: 1, borderColor: '#444', overflow: 'hidden' },
+  stepperBtn: { paddingHorizontal: 15, paddingVertical: 8, backgroundColor: '#444' },
+  stepperBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  stepperValue: { color: '#fff', fontSize: 16, paddingHorizontal: 15, fontWeight: 'bold', minWidth: 40, textAlign: 'center' },
   sectionCompact: { padding: 10 },
   inputCompact: { padding: 8, fontSize: 14 },
   searchRowCompact: { marginBottom: 5 },
