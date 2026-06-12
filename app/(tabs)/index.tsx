@@ -329,9 +329,10 @@ export default function TheRunScreen() {
       generalTasks,
       physicalChecklist,
     };
-  }, [allOrders, allOrderItems, catalog, people, allTasks, targetDate, settings.groupByFreshness, settings.locationOrder, settings.sourceOrder, targetDate, refreshKey]);
+  }, [allOrders, allOrderItems, catalog, people, allTasks, targetDate, settings.groupByFreshness, settings.locationOrder, settings.sourceOrder]);
 
   const flatListData = useMemo(() => {
+    const listStart = performance.now();
     const list: any[] = [];
 
     if (isSearching) {
@@ -441,6 +442,8 @@ export default function TheRunScreen() {
       list.push({ type: 'no-results', id: 'no-results' });
     }
 
+    const listEnd = performance.now();
+    perfLog(`[PERF] [flatListData useMemo] Completed in ${(listEnd - listStart).toFixed(2)}ms, generated ${list.length} items.`);
     return list;
   }, [
     isSearching,
@@ -458,7 +461,7 @@ export default function TheRunScreen() {
     physicalChecklist,
   ]);
 
-  const toggleTaskStatus = async (taskId: string, currentStatus: boolean, taskTargetDate?: string | null) => {
+  const toggleTaskStatus = React.useCallback(async (taskId: string, currentStatus: boolean, taskTargetDate?: string | null) => {
     try {
       const updates: any = { isCompleted: !currentStatus };
       if (!currentStatus && !taskTargetDate) {
@@ -469,13 +472,13 @@ export default function TheRunScreen() {
       console.error(e);
       Alert.alert(t('common.error'), 'Failed to toggle task status');
     }
-  };
+  }, [targetDate, t]);
 
-  const handleEditTask = (task: any) => {
+  const handleEditTask = React.useCallback((task: any) => {
     router.push({ pathname: '/add-order', params: { editTaskId: task.id } });
-  };
+  }, [router]);
 
-  const handleDeleteTask = (taskId: string, title: string) => {
+  const handleDeleteTask = React.useCallback((taskId: string, title: string) => {
     Alert.alert(
       t('tasks.deleteTitle') || 'Delete Task',
       t('tasks.deleteConfirm', { title }) || `Are you sure you want to delete "${title}"?`,
@@ -495,9 +498,9 @@ export default function TheRunScreen() {
         },
       ]
     );
-  };
+  }, [t]);
 
-  const handleTaskLongPress = (task: any) => {
+  const handleTaskLongPress = React.useCallback((task: any) => {
     Alert.alert(
       t('tasks.actionTitle') || 'Task Actions',
       t('tasks.actionMsg', { title: task.title }) || `What do you want to do with "${task.title}"?`,
@@ -514,9 +517,10 @@ export default function TheRunScreen() {
         },
       ]
     );
-  };
+  }, [handleEditTask, handleDeleteTask, t]);
 
   const renderFlatItem = React.useCallback(({ item }: { item: any }) => {
+    perfLog(`[PERF] [RenderItem called] Render #${currentRender} - type=${item.type} id=${item.id}`);
     switch (item.type) {
       case 'exit-search':
         return (
@@ -599,13 +603,14 @@ export default function TheRunScreen() {
         return (
           <SourceGroupCard
             source={item.source}
+            sourceKey={item.sourceKey}
             itemsList={item.itemsList}
             sourceTotal={sourceTotal}
             isCollapsed={isCollapsed}
             checkedItems={checkedItems}
             compactMode={settings.compactMode}
             isRTL={isRTL}
-            onToggleCollapse={() => toggleSourceCollapse(item.sourceKey)}
+            onToggleCollapse={toggleSourceCollapse}
             onToggleCheck={toggleCheck}
           />
         );
@@ -739,17 +744,8 @@ export default function TheRunScreen() {
                 compactMode={settings.compactMode}
                 isRTL={isRTL}
                 t={t}
-                onLongPress={(orderId) => {
-                  if (!selectionMode) {
-                    setSelectionMode(true);
-                    setSelectedOrders(new Set([orderId]));
-                  }
-                }}
-                onPress={(orderId) => {
-                  if (selectionMode) {
-                    toggleOrderSelection(orderId);
-                  }
-                }}
+                onLongPress={handleOrderLongPress}
+                onPress={handleOrderPress}
                 onEdit={handleEditOrder}
                 onDelete={handleDeleteOrder}
                 onPayAmount={setPayAmountOrder}
@@ -790,27 +786,30 @@ export default function TheRunScreen() {
     t,
   ]);
 
-  const toggleCheck = (itemId: string) => {
+  const toggleCheck = React.useCallback((itemId: string) => {
+    perfLog(`[PERF] [Interaction] toggleCheck called for itemId: ${itemId}`);
+    const start = performance.now();
     setCheckedItems((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
-  };
+    perfLog(`[PERF] [Interaction] toggleCheck state update triggered in ${(performance.now() - start).toFixed(2)}ms`);
+  }, []);
 
-  const handleMarkAllPaid = async (orderId: string, personId: string) => {
+  const handleMarkAllPaid = React.useCallback(async (orderId: string, personId: string) => {
     try {
       await api.markOrderPaid(orderId, personId);
     } catch (e) {
       console.error(e);
       Alert.alert(t('common.error'), t('run.failedMarkPaid'));
     }
-  };
+  }, [t]);
 
-  const handleMarkAllUnpaid = async (orderId: string, personId: string) => {
+  const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {
     try {
       await api.markOrderUnpaid(orderId, personId);
     } catch (e) {
       console.error(e);
       Alert.alert(t('common.error'), t('run.failedMarkUnpaid'));
     }
-  };
+  }, [t]);
 
   const handleCustomPayment = async (value: string, markAllPast: boolean = false) => {
     if (!payAmountOrder) return;
@@ -894,7 +893,7 @@ export default function TheRunScreen() {
     Alert.alert(t('run.copiedTitle'), t('run.copiedMsg'));
   };
 
-  const handleDeleteOrder = (orderId: string, personName: string, isPaid: boolean) => {
+  const handleDeleteOrder = React.useCallback((orderId: string, personName: string, isPaid: boolean) => {
     if (isPaid) {
       Alert.alert(
         t('run.deleteOrderTitle'),
@@ -947,9 +946,9 @@ export default function TheRunScreen() {
         ]
       );
     }
-  };
+  }, [t]);
 
-  const handleEditOrder = (order: any, person: any) => {
+  const handleEditOrder = React.useCallback((order: any, person: any) => {
     router.push({
       pathname: '/add-order',
       params: {
@@ -958,30 +957,54 @@ export default function TheRunScreen() {
         edit: Date.now().toString()
       }
     });
-  };
+  }, [router]);
 
   const getSourceTotal = (itemsList: { totalCost: number }[]) => {
     return itemsList.reduce((sum, ag) => sum + ag.totalCost, 0);
   };
 
-  const toggleSourceCollapse = (sourceKey: string) => {
+  const toggleSourceCollapse = React.useCallback((sourceKey: string) => {
+    perfLog(`[PERF] [Interaction] toggleSourceCollapse called for: ${sourceKey}`);
+    const start = performance.now();
     setCollapsedSources(prev => ({ ...prev, [sourceKey]: !prev[sourceKey] }));
-  };
+    perfLog(`[PERF] [Interaction] toggleSourceCollapse state update triggered in ${(performance.now() - start).toFixed(2)}ms`);
+  }, []);
 
-  const toggleLocationCollapse = (locKey: string) => {
+  const toggleLocationCollapse = React.useCallback((locKey: string) => {
+    perfLog(`[PERF] [Interaction] toggleLocationCollapse called for: ${locKey}`);
+    const start = performance.now();
     setCollapsedLocations(prev => ({ ...prev, [locKey]: !prev[locKey] }));
-  };
+    perfLog(`[PERF] [Interaction] toggleLocationCollapse state update triggered in ${(performance.now() - start).toFixed(2)}ms`);
+  }, []);
 
-  const toggleOrderSelection = (orderId: string) => {
-    const next = new Set(selectedOrders);
-    if (next.has(orderId)) {
-      next.delete(orderId);
-      if (next.size === 0) setSelectionMode(false);
-    } else {
-      next.add(orderId);
+  const toggleOrderSelection = React.useCallback((orderId: string) => {
+    setSelectedOrders((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+        if (next.size === 0) setSelectionMode(false);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleOrderLongPress = React.useCallback((orderId: string) => {
+    setSelectionMode((prevMode) => {
+      if (!prevMode) {
+        setSelectedOrders(new Set([orderId]));
+        return true;
+      }
+      return prevMode;
+    });
+  }, []);
+
+  const handleOrderPress = React.useCallback((orderId: string) => {
+    if (selectionMode) {
+      toggleOrderSelection(orderId);
     }
-    setSelectedOrders(next);
-  };
+  }, [selectionMode, toggleOrderSelection]);
 
   const handleDeleteSelected = () => {
     Alert.alert(
@@ -1160,6 +1183,11 @@ export default function TheRunScreen() {
         style={styles.container}
         contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact, { paddingBottom: 100 }]}
         keyboardShouldPersistTaps="handled"
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={true}
       />
 
       {unknownPricePerson && (
@@ -1848,22 +1876,92 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
       </View>
     </View>
   );
+}, (prev, next) => {
+  return prev.po === next.po &&
+         prev.selectionMode === next.selectionMode &&
+         prev.isSelected === next.isSelected &&
+         prev.compactMode === next.compactMode &&
+         prev.isRTL === next.isRTL;
+});
+
+interface ShoppingListItemRowProps {
+  ag: any;
+  isChecked: boolean;
+  compactMode: boolean;
+  isRTL: boolean;
+  onToggleCheck: (itemId: string) => void;
+}
+
+const ShoppingListItemRow = React.memo(function ShoppingListItemRow({
+  ag,
+  isChecked,
+  compactMode,
+  isRTL,
+  onToggleCheck,
+}: ShoppingListItemRowProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.itemRow, compactMode && styles.itemRowCompact]}
+      onPress={() => onToggleCheck(ag.item.id)}>
+      <FontAwesome
+        name={isChecked ? 'check-square' : 'square-o'}
+        size={compactMode ? 20 : 24}
+        color={ACCENT_GOLD}
+      />
+      <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', gap: 8, overflow: 'hidden', marginStart: 10 }}>
+        <View style={[styles.quantityBadge, compactMode && styles.quantityBadgeCompact, isChecked && styles.quantityBadgeCrossed]}>
+          <Text style={[styles.quantityText, compactMode && styles.quantityTextCompact, isChecked && styles.quantityTextCrossed]}>
+            x{ag.totalQuantity}
+          </Text>
+        </View>
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={[
+            styles.itemText,
+            compactMode && styles.itemTextCompact,
+            isChecked && styles.itemTextCrossed,
+            { flexShrink: 1, marginStart: 0 }
+          ]}>
+          {isRTL ? '\u200F' : ''}{ag.item.name}
+        </Text>
+      </View>
+      <View style={styles.itemPriceContainer}>
+        {ag.totalCost > 0 && (
+          <Text style={[
+            styles.itemPrice,
+            compactMode && styles.textSmall,
+            isChecked && styles.itemTextCrossed,
+          ]}>
+            ${ag.totalCost.toFixed(2)}
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}, (prev, next) => {
+  return prev.ag === next.ag &&
+         prev.isChecked === next.isChecked &&
+         prev.compactMode === next.compactMode &&
+         prev.isRTL === next.isRTL;
 });
 
 interface SourceGroupCardProps {
   source: string;
+  sourceKey: string;
   itemsList: any[];
   sourceTotal: number;
   isCollapsed: boolean;
   checkedItems: Record<string, boolean>;
   compactMode: boolean;
   isRTL: boolean;
-  onToggleCollapse: () => void;
+  onToggleCollapse: (sourceKey: string) => void;
   onToggleCheck: (itemId: string) => void;
 }
 
 const SourceGroupCard = React.memo(function SourceGroupCard({
   source,
+  sourceKey,
   itemsList,
   sourceTotal,
   isCollapsed,
@@ -1878,7 +1976,7 @@ const SourceGroupCard = React.memo(function SourceGroupCard({
       <View style={[styles.sourceGroup, compactMode && styles.sourceGroupCompact]}>
         <TouchableOpacity
           style={[styles.sourceHeader, compactMode && styles.sourceHeaderCompact]}
-          onPress={onToggleCollapse}
+          onPress={() => onToggleCollapse(sourceKey)}
           activeOpacity={0.7}>
           <View style={[styles.sourceTitleRow, { flex: 1 }]}>
             <FontAwesome
@@ -1898,47 +1996,24 @@ const SourceGroupCard = React.memo(function SourceGroupCard({
         </TouchableOpacity>
 
         {!isCollapsed && itemsList.map((ag) => (
-          <TouchableOpacity
+          <ShoppingListItemRow
             key={ag.item.id}
-            style={[styles.itemRow, compactMode && styles.itemRowCompact]}
-            onPress={() => onToggleCheck(ag.item.id)}>
-            <FontAwesome
-              name={checkedItems[ag.item.id] ? 'check-square' : 'square-o'}
-              size={compactMode ? 20 : 24}
-              color={ACCENT_GOLD}
-            />
-            <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', gap: 8, overflow: 'hidden', marginStart: 10 }}>
-              <View style={[styles.quantityBadge, compactMode && styles.quantityBadgeCompact, checkedItems[ag.item.id] && styles.quantityBadgeCrossed]}>
-                <Text style={[styles.quantityText, compactMode && styles.quantityTextCompact, checkedItems[ag.item.id] && styles.quantityTextCrossed]}>
-                  x{ag.totalQuantity}
-                </Text>
-              </View>
-              <Text
-                numberOfLines={1}
-                ellipsizeMode="tail"
-                style={[
-                  styles.itemText,
-                  compactMode && styles.itemTextCompact,
-                  checkedItems[ag.item.id] && styles.itemTextCrossed,
-                  { flexShrink: 1, marginStart: 0 }
-                ]}>
-                {isRTL ? '\u200F' : ''}{ag.item.name}
-              </Text>
-            </View>
-            <View style={styles.itemPriceContainer}>
-              {ag.totalCost > 0 && (
-                <Text style={[
-                  styles.itemPrice,
-                  compactMode && styles.textSmall,
-                  checkedItems[ag.item.id] && styles.itemTextCrossed,
-                ]}>
-                  ${ag.totalCost.toFixed(2)}
-                </Text>
-              )}
-            </View>
-          </TouchableOpacity>
+            ag={ag}
+            isChecked={checkedItems[ag.item.id] || false}
+            compactMode={compactMode}
+            isRTL={isRTL}
+            onToggleCheck={onToggleCheck}
+          />
         ))}
       </View>
     </View>
   );
+}, (prev, next) => {
+  return prev.sourceKey === next.sourceKey &&
+         prev.itemsList === next.itemsList &&
+         prev.sourceTotal === next.sourceTotal &&
+         prev.isCollapsed === next.isCollapsed &&
+         prev.checkedItems === next.checkedItems &&
+         prev.compactMode === next.compactMode &&
+         prev.isRTL === next.isRTL;
 });

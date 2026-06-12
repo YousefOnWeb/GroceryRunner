@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList, View as RNView, Pressable, Animated } from 'react-native';
 import { Text, View, TextInput } from '@/components/Themed';
 import { db } from '@/db';
@@ -21,6 +21,13 @@ import PromptModal from '@/components/PromptModal';
 import PersonOrdersModal from '@/components/PersonOrdersModal';
 import DropdownSelect from '@/components/DropdownSelect';
 
+const ENABLE_PERF_LOGGING = true;
+const perfLog = (message: string) => {
+  if (__DEV__ && ENABLE_PERF_LOGGING) {
+    console.log(message);
+  }
+};
+
 export default function UnsettledScreen() {
   const router = useRouter();
   const { settings } = useSettings();
@@ -39,6 +46,17 @@ export default function UnsettledScreen() {
   const [logPerson, setLogPerson] = useState<{ id: string; name: string } | null>(null);
   const [payAmountOrder, setPayAmountOrder] = useState<{ id: string; personId: string; total: number; personName: string; date: string } | null>(null);
   const [ordersPerson, setOrdersPerson] = useState<{ id: string; name: string } | null>(null);
+
+  const renderCountRef = useRef(0);
+  renderCountRef.current++;
+  const currentRender = renderCountRef.current;
+  const renderStartTime = performance.now();
+  perfLog(`[PERF] [Render Start] UnsettledScreen Render #${currentRender} started.`);
+
+  useEffect(() => {
+    const renderEndTime = performance.now();
+    perfLog(`[PERF] [Render End] UnsettledScreen Render #${currentRender} finished in ${(renderEndTime - renderStartTime).toFixed(2)}ms.`);
+  });
 
   // Drizzle Queries
   const { data: allUnsettledOrders } = useLiveQuery(
@@ -75,6 +93,7 @@ export default function UnsettledScreen() {
 
   // Map orders, calculate totals, resolve relations
   const unsettledOrdersList = useMemo(() => {
+    const start = performance.now();
     if (!allUnsettledOrders || !allUnsettledOrderItems || !catalog || !peopleList || !allIncompleteTasks) {
       return [];
     }
@@ -140,15 +159,21 @@ export default function UnsettledScreen() {
       }
     });
 
+    const end = performance.now();
+    perfLog(`[PERF] [unsettledOrdersList useMemo] processed ${baseList.length} unsettled orders in ${(end - start).toFixed(2)}ms`);
     return baseList;
-  }, [allUnsettledOrders, allUnsettledOrderItems, catalog, peopleList, allIncompleteTasks, refreshKey]);
+  }, [allUnsettledOrders, allUnsettledOrderItems, catalog, peopleList, allIncompleteTasks]);
 
   // Apply search query filtering
   const filteredOrders = useMemo(() => {
+    const start = performance.now();
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return unsettledOrdersList;
+    if (!q) {
+      perfLog(`[PERF] [filteredOrders useMemo] filtering skipped (empty query)`);
+      return unsettledOrdersList;
+    }
 
-    return unsettledOrdersList.filter(po => {
+    const result = unsettledOrdersList.filter(po => {
       const aliases = allAliases?.filter(a => a.personId === po.person.id).map(a => a.alias) || [];
       const itemNames = po.items.map(i => i.itemDef?.name || '').join(' ');
       const searchString = [
@@ -160,10 +185,14 @@ export default function UnsettledScreen() {
       ].join(' ').toLowerCase();
       return searchString.includes(q);
     });
+    const end = performance.now();
+    perfLog(`[PERF] [filteredOrders useMemo] filtering took ${(end - start).toFixed(2)}ms`);
+    return result;
   }, [unsettledOrdersList, allAliases, searchQuery]);
 
   // Apply sorting
   const sortedOrders = useMemo(() => {
+    const start = performance.now();
     const list = [...filteredOrders];
     list.sort((a, b) => {
       let comparison = 0;
@@ -177,6 +206,8 @@ export default function UnsettledScreen() {
 
       return sortOrder === 'asc' ? comparison : -comparison;
     });
+    const end = performance.now();
+    perfLog(`[PERF] [sortedOrders useMemo] sorting took ${(end - start).toFixed(2)}ms`);
     return list;
   }, [filteredOrders, sortBy, sortOrder]);
 
@@ -193,6 +224,7 @@ export default function UnsettledScreen() {
 
   // Flatten and group for FlatList data array
   const flatListData = useMemo(() => {
+    const start = performance.now();
     const list: any[] = [];
 
     if (groupBy === 'day') {
@@ -266,27 +298,29 @@ export default function UnsettledScreen() {
       });
     }
 
+    const end = performance.now();
+    perfLog(`[PERF] [flatListData useMemo] grouped list generated in ${(end - start).toFixed(2)}ms (items: ${list.length})`);
     return list;
   }, [sortedOrders, groupBy, sortOrder]);
 
   // Order Handlers
-  const handleMarkAllPaid = async (orderId: string, personId: string) => {
+  const handleMarkAllPaid = React.useCallback(async (orderId: string, personId: string) => {
     try {
       await api.markOrderPaid(orderId, personId);
     } catch (e) {
       console.error(e);
       Alert.alert(t('common.error'), t('run.failedMarkPaid'));
     }
-  };
+  }, [t]);
 
-  const handleMarkAllUnpaid = async (orderId: string, personId: string) => {
+  const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {
     try {
       await api.markOrderUnpaid(orderId, personId);
     } catch (e) {
       console.error(e);
       Alert.alert(t('common.error'), t('run.failedMarkUnpaid'));
     }
-  };
+  }, [t]);
 
   const handleCustomPayment = async (value: string, markAllPast: boolean = false) => {
     if (!payAmountOrder) return;
@@ -316,7 +350,7 @@ export default function UnsettledScreen() {
     }
   };
 
-  const handleDeleteOrder = (orderId: string, personName: string, isPaid: boolean) => {
+  const handleDeleteOrder = React.useCallback((orderId: string, personName: string, isPaid: boolean) => {
     if (isPaid) {
       Alert.alert(
         t('run.deleteOrderTitle'),
@@ -369,9 +403,9 @@ export default function UnsettledScreen() {
         ]
       );
     }
-  };
+  }, [t]);
 
-  const handleEditOrder = (order: any, person: any) => {
+  const handleEditOrder = React.useCallback((order: any, person: any) => {
     router.push({
       pathname: '/add-order',
       params: {
@@ -380,7 +414,11 @@ export default function UnsettledScreen() {
         edit: Date.now().toString()
       }
     });
-  };
+  }, [router]);
+
+  const handlePayAmountRequest = React.useCallback((payInfo: { id: string; personId: string; total: number; personName: string; targetDate: string }) => {
+    setPayAmountOrder({ ...payInfo, date: payInfo.targetDate });
+  }, []);
 
   const toggleSort = (type: typeof sortBy) => {
     if (sortBy === type) {
@@ -423,6 +461,7 @@ export default function UnsettledScreen() {
 
   // FlatList Render Item
   const renderFlatItem = React.useCallback(({ item }: { item: any }) => {
+    perfLog(`[PERF] [RenderItem called] Unsettled Render #${currentRender} - type=${item.type} id=${item.id}`);
     if (item.type === 'group-header') {
       return renderGroupHeader(item.title, item.count, item.total);
     }
@@ -437,7 +476,7 @@ export default function UnsettledScreen() {
           showDate={groupBy !== 'day'}
           onEdit={handleEditOrder}
           onDelete={handleDeleteOrder}
-          onPayAmount={(payInfo) => setPayAmountOrder({ ...payInfo, date: item.po.order.targetDate })}
+          onPayAmount={handlePayAmountRequest}
           onMarkPaid={handleMarkAllPaid}
           onMarkUnpaid={handleMarkAllUnpaid}
           onUnknownPrice={setUnknownPricePerson}
@@ -623,8 +662,10 @@ export default function UnsettledScreen() {
         ListEmptyComponent={renderEmpty}
         contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact, { paddingBottom: 120 }]}
         keyboardShouldPersistTaps="handled"
-        initialNumToRender={10}
-        windowSize={5}
+        initialNumToRender={3}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        updateCellsBatchingPeriod={50}
         removeClippedSubviews={true}
       />
 
@@ -728,7 +769,7 @@ interface UnsettledOrderCardProps {
   showDate: boolean;
   onEdit: (order: any, person: any) => void;
   onDelete: (orderId: string, personName: string, isPaid: boolean) => void;
-  onPayAmount: (payInfo: { id: string; personId: string; total: number; personName: string }) => void;
+  onPayAmount: (payInfo: { id: string; personId: string; total: number; personName: string; targetDate: string }) => void;
   onMarkPaid: (orderId: string, personId: string) => void;
   onMarkUnpaid: (orderId: string, personId: string) => void;
   onUnknownPrice: (personInfo: { id: string; name: string }) => void;
@@ -937,7 +978,7 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
             {po.hasUnpaidItems ? (
               <RNView style={{ flexDirection: 'row', gap: 8 }}>
                 <TouchableOpacity
-                  onPress={() => onPayAmount({ id: po.order.id, personId: po.person.id, total: po.totalCost, personName: po.person.name })}>
+                  onPress={() => onPayAmount({ id: po.order.id, personId: po.person.id, total: po.totalCost, personName: po.person.name, targetDate: po.order.targetDate })}>
                   <RNView style={styles.paymentShadow}>
                     <LinearGradient
                       colors={METALLIC_BEVEL}
