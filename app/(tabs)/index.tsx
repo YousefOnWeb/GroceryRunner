@@ -46,6 +46,7 @@ export default function TheRunScreen() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
+  const [optimisticTasks, setOptimisticTasks] = useState<Record<string, boolean>>({});
   const [paidItems, setPaidItems] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -441,19 +442,31 @@ export default function TheRunScreen() {
     selectedOrders,
     selectionMode,
     checkedItems,
+    optimisticTasks,
     generalTasks,
     physicalChecklist,
   ]);
 
   const toggleTaskStatus = React.useCallback(async (taskId: string, currentStatus: boolean, taskTargetDate?: string | null) => {
+    perfLog(`[PERF] [Interaction] toggleTaskStatus called for taskId: ${taskId}`);
+    const start = performance.now();
+    const newStatus = !currentStatus;
+    setOptimisticTasks(prev => ({ ...prev, [taskId]: newStatus }));
+    perfLog(`[PERF] [Interaction] toggleTaskStatus optimistic UI updated in ${(performance.now() - start).toFixed(2)}ms`);
+
     try {
-      const updates: any = { isCompleted: !currentStatus };
+      const updates: any = { isCompleted: newStatus };
       if (!currentStatus && !taskTargetDate) {
         updates.targetDate = getLocalDateString(targetDate);
       }
       await api.updateTask(taskId, updates);
     } catch (e) {
       console.error(e);
+      setOptimisticTasks(prev => {
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
       Alert.alert(t('common.error'), 'Failed to toggle task status');
     }
   }, [targetDate, t]);
@@ -523,37 +536,38 @@ export default function TheRunScreen() {
       case 'general-tasks':
         return (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.generalTasksRow} contentContainerStyle={{ gap: 10 }}>
-            {item.tasks.map((task: any) => (
-              <TouchableOpacity
-                key={task.id}
-                style={[styles.taskPill, task.isCompleted && styles.taskPillCompleted, settings.compactMode && styles.taskPillCompact]}
-                onPress={() => toggleTaskStatus(task.id, task.isCompleted, task.targetDate)}
-                onLongPress={() => handleTaskLongPress(task)}
-              >
-                <FontAwesome name={task.isCompleted ? "check-circle" : "circle-thin"} size={settings.compactMode ? 14 : 16} color={task.isCompleted ? ACCENT_GOLD : "#ccc"} />
-                <Text style={[styles.taskPillText, task.isCompleted && styles.taskPillTextCompleted, settings.compactMode && styles.textExtraSmall]}>{task.title}</Text>
-                {task.targetTime && <Text style={[styles.taskPillTime, settings.compactMode && styles.textExtraSmall]}>{task.targetTime}</Text>}
-              </TouchableOpacity>
-            ))}
+            {item.tasks.map((task: any) => {
+              const isCompleted = optimisticTasks[task.id] !== undefined ? optimisticTasks[task.id] : task.isCompleted;
+              return (
+                <MemoizedTaskPill
+                  key={task.id}
+                  task={task}
+                  isCompleted={isCompleted}
+                  compactMode={settings.compactMode}
+                  onToggle={toggleTaskStatus}
+                  onLongPress={handleTaskLongPress}
+                />
+              );
+            })}
           </ScrollView>
         );
       case 'physical-checklist':
         return (
           <View style={styles.physicalChecklistContainer}>
             <Text style={[styles.physicalChecklistTitle, settings.compactMode && styles.textSmall]}>{t('tasks.physicalChecklist') || 'Physical Tasks Checklist'}</Text>
-            {item.tasks.map((task: any) => (
-              <TouchableOpacity
-                key={task.id}
-                style={[styles.checklistRow, settings.compactMode && styles.checklistRowCompact]}
-                onPress={() => toggleTaskStatus(task.id, task.isCompleted, task.targetDate)}
-                onLongPress={() => handleTaskLongPress(task)}
-              >
-                <FontAwesome name={task.isCompleted ? "check-square-o" : "square-o"} size={settings.compactMode ? 18 : 22} color={task.isCompleted ? ACCENT_GOLD : ACCENT_GOLD} />
-                <Text style={[styles.checklistText, task.isCompleted && styles.checklistTextCompleted, settings.compactMode && styles.textSmall]}>
-                  {task.title}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {item.tasks.map((task: any) => {
+              const isCompleted = optimisticTasks[task.id] !== undefined ? optimisticTasks[task.id] : task.isCompleted;
+              return (
+                <MemoizedPhysicalTaskRow
+                  key={task.id}
+                  task={task}
+                  isCompleted={isCompleted}
+                  compactMode={settings.compactMode}
+                  onToggle={toggleTaskStatus}
+                  onLongPress={handleTaskLongPress}
+                />
+              );
+            })}
           </View>
         );
       case 'shopping-header':
@@ -676,28 +690,21 @@ export default function TheRunScreen() {
                 </View>
               </View>
               <View style={styles.personTasksContainer}>
-                {po.tasks.map((task: any) => (
-                  <View key={task.id} style={[styles.personTaskRow, settings.compactMode && styles.personTaskRowCompact]}>
-                    <TouchableOpacity
-                      style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
-                      onPress={() => toggleTaskStatus(task.id, task.isCompleted, task.targetDate)}
-                      onLongPress={() => handleTaskLongPress(task)}
-                    >
-                      <FontAwesome name={task.isCompleted ? "check-square-o" : "square-o"} size={settings.compactMode ? 16 : 18} color={task.isCompleted ? ACCENT_GOLD : "#888"} />
-                      <Text style={[styles.personTaskText, task.isCompleted && styles.personTaskTextCompleted, settings.compactMode && styles.textSmall]}>
-                        {task.title}
-                      </Text>
-                    </TouchableOpacity>
-                    <View style={{ flexDirection: 'row', gap: 12, marginStart: 10 }}>
-                      <TouchableOpacity onPress={() => handleEditTask(task)}>
-                        <FontAwesome name="edit" size={settings.compactMode ? 16 : 18} color={ACCENT_GOLD} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteTask(task.id, task.title)}>
-                        <FontAwesome name="trash" size={settings.compactMode ? 16 : 18} color="#ff4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
+                {po.tasks.map((task: any) => {
+                  const isCompleted = optimisticTasks[task.id] !== undefined ? optimisticTasks[task.id] : task.isCompleted;
+                  return (
+                    <MemoizedPersonTaskRow
+                      key={task.id}
+                      task={task}
+                      isCompleted={isCompleted}
+                      compactMode={settings.compactMode}
+                      onToggle={toggleTaskStatus}
+                      onLongPress={handleTaskLongPress}
+                      onEdit={handleEditTask}
+                      onDelete={handleDeleteTask}
+                    />
+                  );
+                })}
               </View>
             </View>
           </View>
@@ -765,6 +772,7 @@ export default function TheRunScreen() {
     selectedOrders,
     selectionMode,
     checkedItems,
+    optimisticTasks,
     settings.compactMode,
     isRTL,
     t,
@@ -1625,6 +1633,108 @@ const styles = StyleSheet.create({
 // ==========================================
 // MEMOIZED PERFORMANCE-OPTIMIZED SUBCOMPONENTS
 // ==========================================
+
+interface MemoizedTaskProps {
+  task: any;
+  isCompleted: boolean;
+  compactMode: boolean;
+  onToggle: (taskId: string, currentStatus: boolean, taskTargetDate?: string | null) => void;
+  onLongPress: (task: any) => void;
+}
+
+const MemoizedTaskPill = React.memo(function MemoizedTaskPill({
+  task,
+  isCompleted,
+  compactMode,
+  onToggle,
+  onLongPress
+}: MemoizedTaskProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.taskPill, isCompleted && styles.taskPillCompleted, compactMode && styles.taskPillCompact]}
+      onPress={() => onToggle(task.id, isCompleted, task.targetDate)}
+      onLongPress={() => onLongPress(task)}
+    >
+      <FontAwesome name={isCompleted ? "check-circle" : "circle-thin"} size={compactMode ? 14 : 16} color={isCompleted ? ACCENT_GOLD : "#ccc"} />
+      <Text style={[styles.taskPillText, isCompleted && styles.taskPillTextCompleted, compactMode && styles.textExtraSmall]}>{task.title}</Text>
+      {task.targetTime && <Text style={[styles.taskPillTime, compactMode && styles.textExtraSmall]}>{task.targetTime}</Text>}
+    </TouchableOpacity>
+  );
+}, (prev, next) => {
+  return prev.task.id === next.task.id &&
+         prev.task.title === next.task.title &&
+         prev.isCompleted === next.isCompleted &&
+         prev.compactMode === next.compactMode;
+});
+
+const MemoizedPhysicalTaskRow = React.memo(function MemoizedPhysicalTaskRow({
+  task,
+  isCompleted,
+  compactMode,
+  onToggle,
+  onLongPress
+}: MemoizedTaskProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.checklistRow, compactMode && styles.checklistRowCompact]}
+      onPress={() => onToggle(task.id, isCompleted, task.targetDate)}
+      onLongPress={() => onLongPress(task)}
+    >
+      <FontAwesome name={isCompleted ? "check-square-o" : "square-o"} size={compactMode ? 18 : 22} color={isCompleted ? ACCENT_GOLD : ACCENT_GOLD} />
+      <Text style={[styles.checklistText, isCompleted && styles.checklistTextCompleted, compactMode && styles.textSmall]}>
+        {task.title}
+      </Text>
+    </TouchableOpacity>
+  );
+}, (prev, next) => {
+  return prev.task.id === next.task.id &&
+         prev.task.title === next.task.title &&
+         prev.isCompleted === next.isCompleted &&
+         prev.compactMode === next.compactMode;
+});
+
+interface MemoizedPersonTaskProps extends MemoizedTaskProps {
+  onEdit: (task: any) => void;
+  onDelete: (taskId: string, title: string) => void;
+}
+
+const MemoizedPersonTaskRow = React.memo(function MemoizedPersonTaskRow({
+  task,
+  isCompleted,
+  compactMode,
+  onToggle,
+  onLongPress,
+  onEdit,
+  onDelete
+}: MemoizedPersonTaskProps) {
+  return (
+    <View style={[styles.personTaskRow, compactMode && styles.personTaskRowCompact]}>
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
+        onPress={() => onToggle(task.id, isCompleted, task.targetDate)}
+        onLongPress={() => onLongPress(task)}
+      >
+        <FontAwesome name={isCompleted ? "check-square-o" : "square-o"} size={compactMode ? 16 : 18} color={isCompleted ? ACCENT_GOLD : "#888"} />
+        <Text style={[styles.personTaskText, isCompleted && styles.personTaskTextCompleted, compactMode && styles.textSmall]}>
+          {task.title}
+        </Text>
+      </TouchableOpacity>
+      <View style={{ flexDirection: 'row', gap: 12, marginStart: 10 }}>
+        <TouchableOpacity onPress={() => onEdit(task)}>
+          <FontAwesome name="edit" size={compactMode ? 16 : 18} color={ACCENT_GOLD} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => onDelete(task.id, task.title)}>
+          <FontAwesome name="trash" size={compactMode ? 16 : 18} color="#ff4444" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}, (prev, next) => {
+  return prev.task.id === next.task.id &&
+         prev.task.title === next.task.title &&
+         prev.isCompleted === next.isCompleted &&
+         prev.compactMode === next.compactMode;
+});
 
 interface OrderItemRowProps {
   item: any;
