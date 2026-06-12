@@ -39,7 +39,6 @@ export default function UnsettledScreen() {
   const [groupBy, setGroupBy] = useState<'day' | 'person' | 'none'>('day');
   const [sortBy, setSortBy] = useState<'date' | 'amount' | 'name'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [refreshKey, setRefreshKey] = useState(0);
 
   // Modal States
   const [unknownPricePerson, setUnknownPricePerson] = useState<{ id: string; name: string } | null>(null);
@@ -84,12 +83,7 @@ export default function UnsettledScreen() {
     db.select().from(tasks).where(eq(tasks.isCompleted, false))
   );
 
-  // Force re-render when focused to keep relative dates updated
-  useFocusEffect(
-    React.useCallback(() => {
-      setRefreshKey(prev => prev + 1);
-    }, [])
-  );
+
 
   // Map orders, calculate totals, resolve relations
   const unsettledOrdersList = useMemo(() => {
@@ -1031,6 +1025,11 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
       </RNView>
     </RNView>
   );
+}, (prev, next) => {
+  return prev.po === next.po &&
+         prev.compactMode === next.compactMode &&
+         prev.isRTL === next.isRTL &&
+         prev.showDate === next.showDate;
 });
 
 // ==========================================

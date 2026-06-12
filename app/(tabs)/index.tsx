@@ -66,7 +66,6 @@ export default function TheRunScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [showMoveDatePicker, setShowMoveDatePicker] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [payAmountOrder, setPayAmountOrder] = useState<{ id: string; personId: string; total: number; personName: string } | null>(null);
 
   // Performance tracking refs
@@ -87,22 +86,7 @@ export default function TheRunScreen() {
 
   const dateOptions = useMemo(() => generateDateOptions(t, t('modals.daysShort')), [t]);
 
-  // Force re-render when screen is focused to refresh "Today" labels
-  useFocusEffect(
-    React.useCallback(() => {
-      setRefreshKey(prev => prev + 1);
-    }, [])
-  );
 
-  // Refresh when app comes to foreground
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextAppState => {
-      if (nextAppState === 'active') {
-        setRefreshKey(prev => prev + 1);
-      }
-    });
-    return () => subscription.remove();
-  }, []);
 
   // Profile rendering overhead and transition transaction duration
   useEffect(() => {
