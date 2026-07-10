@@ -58,6 +58,33 @@ export default function TheRunScreen() {
   // Collapsible states
   const [collapsedSources, setCollapsedSources] = useState<Record<string, boolean>>({});
   const [collapsedLocations, setCollapsedLocations] = useState<Record<string, boolean>>({});
+  const [activeLocation, setActiveLocation] = useState<string | null>(null);
+  const [activePerson, setActivePerson] = useState<any>(null);
+
+  const locationYPositions = useRef<{ [id: string]: number }>({});
+  const personYPositions = useRef<{ [id: string]: number }>({});
+  const locationHeaderHeight = useRef(45);
+  const activeLocationRef = useRef<string | null>(null);
+  const activePersonRef = useRef<any>(null);
+
+  const itemHeights = useRef<{ [id: string]: number }>({});
+  const needsYRecompute = useRef(true);
+
+  const handleItemLayout = React.useCallback((id: string, height: number) => {
+    if (Math.abs((itemHeights.current[id] || 0) - height) > 1) {
+      itemHeights.current[id] = height;
+      needsYRecompute.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    setActiveLocation(null);
+    setActivePerson(null);
+    activeLocationRef.current = null;
+    activePersonRef.current = null;
+    locationYPositions.current = {};
+    personYPositions.current = {};
+  }, [targetDate]);
 
   const router = useRouter();
 
@@ -315,6 +342,7 @@ export default function TheRunScreen() {
   }, [allOrders, allOrderItems, catalog, people, allTasks, targetDate, settings.groupByFreshness, settings.locationOrder, settings.sourceOrder]);
 
   const flatListData = useMemo(() => {
+    needsYRecompute.current = true;
     const listStart = performance.now();
     const list: any[] = [];
 
@@ -407,13 +435,85 @@ export default function TheRunScreen() {
     peopleOrders,
     collapsedLocations,
     collapsedSources,
-    selectedOrders,
+        selectedOrders,
     selectionMode,
     checkedItems,
     optimisticTasks,
     generalTasks,
     physicalChecklist,
   ]);
+
+  const handleScroll = React.useCallback((e: any) => {
+    if (needsYRecompute.current) {
+      let currentY = 0;
+      let newLocY: { [id: string]: number } = {};
+      let newPersY: { [id: string]: number } = {};
+
+      for (let i = 0; i < flatListData.length; i++) {
+        const item = flatListData[i];
+        if (item.type === 'location-header') {
+          newLocY[item.location] = currentY;
+        } else if (item.type === 'person-header') {
+          newPersY[item.person.id] = currentY;
+        }
+
+        let h = itemHeights.current[item.id];
+        if (h === undefined) {
+           if (item.type === 'location-header') h = 45;
+           else if (item.type === 'person-header') h = 45;
+           else if (item.type === 'deliveries-header') h = 45;
+           else if (item.type === 'separator') h = 20;
+           else if (item.type === 'shopping-header') h = 100;
+           else if (item.type === 'shopping-source') h = 60;
+           else if (item.type === 'order-card') h = 100;
+           else h = 50; 
+        }
+        currentY += h;
+      }
+      
+      locationYPositions.current = newLocY;
+      personYPositions.current = newPersY;
+      needsYRecompute.current = false;
+    }
+
+    const scrollY = Math.max(0, e.nativeEvent.contentOffset.y);
+
+    let currentLoc: string | null = null;
+    let maxLocY = -1;
+    for (const [loc, y] of Object.entries(locationYPositions.current)) {
+      if (y <= scrollY + 1 && y > maxLocY) {
+        maxLocY = y;
+        currentLoc = loc;
+      }
+    }
+
+    let currentPers: string | null = null;
+    let maxPersY = -1;
+    for (const [id, y] of Object.entries(personYPositions.current)) {
+      if (y <= scrollY + locationHeaderHeight.current + 1 && y > maxPersY) {
+        maxPersY = y;
+        currentPers = id;
+      }
+    }
+
+    if (currentLoc !== activeLocationRef.current) {
+      activeLocationRef.current = currentLoc;
+      setActiveLocation(currentLoc);
+    }
+
+    if (currentPers !== activePersonRef.current?.id) {
+      if (currentPers === null) {
+        activePersonRef.current = null;
+        setActivePerson(null);
+      } else {
+        const p = flatListData.find((i: any) => i.type === 'person-header' && i.person.id === currentPers)?.person;
+        if (p) {
+          activePersonRef.current = p;
+          setActivePerson(p);
+        }
+      }
+    }
+  }, [flatListData]);
 
   const toggleTaskStatus = React.useCallback(async (taskId: string, currentStatus: boolean, taskTargetDate?: string | null) => {
     perfLog(`[PERF] [Interaction] toggleTaskStatus called for taskId: ${taskId}`);
@@ -486,222 +586,234 @@ export default function TheRunScreen() {
 
   const renderFlatItem = React.useCallback(({ item }: { item: any }) => {
     perfLog(`[PERF] [RenderItem called] Render #${currentRender} - type=${item.type} id=${item.id}`);
-    switch (item.type) {
-      case 'general-tasks':
-        return (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.generalTasksRow} contentContainerStyle={{ gap: 10 }}>
-            {item.tasks.map((task: any) => {
-              const isCompleted = optimisticTasks[task.id] !== undefined ? optimisticTasks[task.id] : task.isCompleted;
-              return (
-                <MemoizedTaskPill
-                  key={task.id}
-                  task={task}
-                  isCompleted={isCompleted}
-                  compactMode={settings.compactMode}
-                  onToggle={toggleTaskStatus}
-                  onLongPress={handleTaskLongPress}
-                />
-              );
-            })}
-          </ScrollView>
-        );
-      case 'physical-checklist':
-        return (
-          <View style={styles.physicalChecklistContainer}>
-            <Text style={[styles.physicalChecklistTitle, settings.compactMode && styles.textSmall]}>{t('tasks.physicalChecklist') || 'Physical Tasks Checklist'}</Text>
-            {item.tasks.map((task: any) => {
-              const isCompleted = optimisticTasks[task.id] !== undefined ? optimisticTasks[task.id] : task.isCompleted;
-              return (
-                <MemoizedPhysicalTaskRow
-                  key={task.id}
-                  task={task}
-                  isCompleted={isCompleted}
-                  compactMode={settings.compactMode}
-                  onToggle={toggleTaskStatus}
-                  onLongPress={handleTaskLongPress}
-                />
-              );
-            })}
-          </View>
-        );
-      case 'shopping-header':
-        return (
-          <LinearGradient
-            colors={METALLIC_BEVEL}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={styles.shoppingListStripOuter}
-          >
+    const content = (() => {
+      switch (item.type) {
+        case 'general-tasks':
+          return (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.generalTasksRow} contentContainerStyle={{ gap: 10 }}>
+              {item.tasks.map((task: any) => {
+                const isCompleted = optimisticTasks[task.id] !== undefined ? optimisticTasks[task.id] : task.isCompleted;
+                return (
+                  <MemoizedTaskPill
+                    key={task.id}
+                    task={task}
+                    isCompleted={isCompleted}
+                    compactMode={settings.compactMode}
+                    onToggle={toggleTaskStatus}
+                    onLongPress={handleTaskLongPress}
+                  />
+                );
+              })}
+            </ScrollView>
+          );
+        case 'physical-checklist':
+          return (
+            <View style={styles.physicalChecklistContainer}>
+              <Text style={[styles.physicalChecklistTitle, settings.compactMode && styles.textSmall]}>{t('tasks.physicalChecklist') || 'Physical Tasks Checklist'}</Text>
+              {item.tasks.map((task: any) => {
+                const isCompleted = optimisticTasks[task.id] !== undefined ? optimisticTasks[task.id] : task.isCompleted;
+                return (
+                  <MemoizedPhysicalTaskRow
+                    key={task.id}
+                    task={task}
+                    isCompleted={isCompleted}
+                    compactMode={settings.compactMode}
+                    onToggle={toggleTaskStatus}
+                    onLongPress={handleTaskLongPress}
+                  />
+                );
+              })}
+            </View>
+          );
+        case 'shopping-header':
+          return (
             <LinearGradient
-              colors={LIQUID_GOLD_STOPS}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.shoppingListStripInner}
+              colors={METALLIC_BEVEL}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.shoppingListStripOuter}
             >
-              <Text style={[styles.shoppingListTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.shoppingList')}</Text>
-              {item.listTotal > 0 && (
-                <Text style={[styles.shoppingListTotal, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>${item.listTotal.toFixed(2)}</Text>
-              )}
+              <LinearGradient
+                colors={LIQUID_GOLD_STOPS}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.shoppingListStripInner}
+              >
+                <Text style={[styles.shoppingListTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.shoppingList')}</Text>
+                {item.listTotal > 0 && (
+                  <Text style={[styles.shoppingListTotal, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>${item.listTotal.toFixed(2)}</Text>
+                )}
+              </LinearGradient>
             </LinearGradient>
-          </LinearGradient>
-        );
-      case 'shopping-timing':
-        return (
-          <Text style={[styles.timingTitle, settings.compactMode && styles.timingTitleCompact]}>{item.timingKey}</Text>
-        );
-      case 'shopping-source': {
-        const sourceTotal = getSourceTotal(item.itemsList);
-        const isCollapsed = collapsedSources[item.sourceKey];
-        return (
-          <SourceGroupCard
-            source={item.source}
-            sourceKey={item.sourceKey}
-            itemsList={item.itemsList}
-            sourceTotal={sourceTotal}
-            isCollapsed={isCollapsed}
-            checkedItems={checkedItems}
-            compactMode={settings.compactMode}
-            isRTL={isRTL}
-            onToggleCollapse={toggleSourceCollapse}
-            onToggleCheck={toggleCheck}
-          />
-        );
-      }
-      case 'separator':
-        return <View style={styles.separator} />;
-      case 'deliveries-header':
-        return (
-          <View style={[styles.deliveriesHeader, settings.compactMode && styles.deliveriesHeaderCompact]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <FontAwesome name="truck" size={settings.compactMode ? 18 : 22} color={ACCENT_GOLD} />
-              <Text style={[styles.sectionTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.deliveries')}</Text>
-            </View>
-          </View>
-        );
-      case 'location-header': {
-        const isCollapsed = collapsedLocations[item.location];
-        return (
-          <TouchableOpacity
-            style={[styles.locationHeaderRow, settings.compactMode && styles.locationHeaderRowCompact]}
-            onPress={() => toggleLocationCollapse(item.location)}
-            activeOpacity={0.7}>
-            <FontAwesome
-              name={isCollapsed ? 'caret-right' : 'caret-down'}
-              size={settings.compactMode ? 16 : 20}
-              color={LIGHT_GOLD}
-              style={{ width: 24, textAlign: 'center' }}
+          );
+        case 'shopping-timing':
+          return (
+            <Text style={[styles.timingTitle, settings.compactMode && styles.timingTitleCompact]}>{item.timingKey}</Text>
+          );
+        case 'shopping-source': {
+          const sourceTotal = getSourceTotal(item.itemsList);
+          const isCollapsed = collapsedSources[item.sourceKey];
+          return (
+            <SourceGroupCard
+              source={item.source}
+              sourceKey={item.sourceKey}
+              itemsList={item.itemsList}
+              sourceTotal={sourceTotal}
+              isCollapsed={isCollapsed}
+              checkedItems={checkedItems}
+              compactMode={settings.compactMode}
+              isRTL={isRTL}
+              onToggleCollapse={toggleSourceCollapse}
+              onToggleCheck={toggleCheck}
             />
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              style={[styles.deliveryLocationTitle, settings.compactMode && styles.deliveryLocationTitleCompact, { flex: 1 }]}>
-              📍 {item.location}
-            </Text>
-          </TouchableOpacity>
-        );
-      }
-      case 'person-header': {
-        return (
-          <View style={[styles.personHeaderRow, settings.compactMode && styles.personHeaderRowCompact]}>
-            <FontAwesome name="user" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} style={{ width: 24, textAlign: 'center' }} />
-            <Text style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact]}>
-              {item.person.name}
-            </Text>
-          </View>
-        );
-      }
-      case 'task-card': {
-        const po = item.po;
-        const threadLineStyle: any = {
-          position: 'absolute',
-          top: 0,
-          bottom: item.isLastInThread ? '50%' : 0,
-          width: 2,
-          backgroundColor: '#333',
-          ...(isRTL ? { right: 11 } : { left: 11 })
-        };
-        const contentPadding = isRTL 
-          ? { paddingRight: settings.compactMode ? 28 : 32, marginRight: 0 }
-          : { paddingLeft: settings.compactMode ? 28 : 32, marginLeft: 0 };
-
-        return (
-          <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
-            <View style={threadLineStyle} />
-            <View style={[styles.taskCardContainer, settings.compactMode && styles.taskCardContainerCompact]}>
-              <View style={styles.taskCardHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                  <FontAwesome name="list-ul" size={14} color={ACCENT_GOLD} style={{ marginEnd: 6 }} />
-                  <Text style={styles.taskCardTitle}>{t('tasks.otherMeetupTasks') || 'Meetup Tasks'}</Text>
-                </View>
-              </View>
-              <View style={styles.personTasksContainer}>
-                {po.tasks.map((task: any) => {
-                  const isCompleted = optimisticTasks[task.id] !== undefined ? optimisticTasks[task.id] : task.isCompleted;
-                  return (
-                    <MemoizedPersonTaskRow
-                      key={task.id}
-                      task={task}
-                      isCompleted={isCompleted}
-                      compactMode={settings.compactMode}
-                      onToggle={toggleTaskStatus}
-                      onLongPress={handleTaskLongPress}
-                      onEdit={handleEditTask}
-                      onDelete={handleDeleteTask}
-                    />
-                  );
-                })}
+          );
+        }
+        case 'separator':
+          return <View style={styles.separator} />;
+        case 'deliveries-header':
+          return (
+            <View style={[styles.deliveriesHeader, settings.compactMode && styles.deliveriesHeaderCompact]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <FontAwesome name="truck" size={settings.compactMode ? 18 : 22} color={ACCENT_GOLD} />
+                <Text style={[styles.sectionTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.deliveries')}</Text>
               </View>
             </View>
-          </View>
-        );
-      }
-      case 'order-card': {
-        const po = item.po;
-        const isSelected = selectedOrders.has(po.order.id);
-        const threadLineStyle: any = {
-          position: 'absolute',
-          top: 0,
-          bottom: item.isLastInThread ? '50%' : 0,
-          width: 2,
-          backgroundColor: '#333',
-          ...(isRTL ? { right: 11 } : { left: 11 })
-        };
-        const contentPadding = isRTL 
-          ? { paddingRight: settings.compactMode ? 28 : 32, marginRight: 0 }
-          : { paddingLeft: settings.compactMode ? 28 : 32, marginLeft: 0 };
+          );
+        case 'location-header': {
+          const isCollapsed = collapsedLocations[item.location];
+          return (
+            <View style={{ backgroundColor: '#1a1a1a', paddingBottom: 10 }}>
+              <TouchableOpacity
+                style={[styles.locationHeaderRow, settings.compactMode && styles.locationHeaderRowCompact, { marginBottom: 0, borderBottomWidth: 0 }]}
+                onPress={() => toggleLocationCollapse(item.location)}
+                activeOpacity={0.7}>
+                <FontAwesome
+                  name={isCollapsed ? 'caret-right' : 'caret-down'}
+                  size={settings.compactMode ? 16 : 20}
+                  color={LIGHT_GOLD}
+                  style={{ width: 24, textAlign: 'center' }}
+                />
+                <Text
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={[styles.deliveryLocationTitle, settings.compactMode && styles.deliveryLocationTitleCompact, { flex: 1 }]}>
+                  📍 {item.location}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        }
+        case 'person-header': {
+          return (
+            <View style={{ backgroundColor: '#1a1a1a', paddingBottom: 10 }}>
+              <View style={[styles.personHeaderRow, settings.compactMode && styles.personHeaderRowCompact, { marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }]}>
+                <FontAwesome name="user" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} style={{ width: 24, textAlign: 'center' }} />
+                <Text style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact, { flex: 1 }]}>
+                  {item.person.name}
+                </Text>
+              </View>
+            </View>
+          );
+        }
+        case 'task-card': {
+          const po = item.po;
+          const threadLineStyle: any = {
+            position: 'absolute',
+            top: 0,
+            bottom: item.isLastInThread ? '50%' : 0,
+            width: 2,
+            backgroundColor: '#333',
+            ...(isRTL ? { right: 11 } : { left: 11 })
+          };
+          const contentPadding = isRTL 
+            ? { paddingRight: settings.compactMode ? 28 : 32, marginRight: 0 }
+            : { paddingLeft: settings.compactMode ? 28 : 32, marginLeft: 0 };
 
-        return (
+          return (
             <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
               <View style={threadLineStyle} />
-              <PersonOrderCard
-                po={po}
-                selectionMode={selectionMode}
-                isSelected={isSelected}
-                compactMode={settings.compactMode}
-                isRTL={isRTL}
-                t={t}
-                onLongPress={handleOrderLongPress}
-                onPress={handleOrderPress}
-                onEdit={handleEditOrder}
-                onDelete={handleDeleteOrder}
-                onPayAmount={setPayAmountOrder}
-                onMarkPaid={handleMarkAllPaid}
-                onMarkUnpaid={handleMarkAllUnpaid}
-                onUnknownPrice={setUnknownPricePerson}
-                onHistory={setLogPerson}
-              />
+              <View style={[styles.taskCardContainer, settings.compactMode && styles.taskCardContainerCompact]}>
+                <View style={styles.taskCardHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <FontAwesome name="list-ul" size={14} color={ACCENT_GOLD} style={{ marginEnd: 6 }} />
+                    <Text style={styles.taskCardTitle}>{t('tasks.otherMeetupTasks') || 'Meetup Tasks'}</Text>
+                  </View>
+                </View>
+                <View style={styles.personTasksContainer}>
+                  {po.tasks.map((task: any) => {
+                    const isCompleted = optimisticTasks[task.id] !== undefined ? optimisticTasks[task.id] : task.isCompleted;
+                    return (
+                      <MemoizedPersonTaskRow
+                        key={task.id}
+                        task={task}
+                        isCompleted={isCompleted}
+                        compactMode={settings.compactMode}
+                        onToggle={toggleTaskStatus}
+                        onLongPress={handleTaskLongPress}
+                        onEdit={handleEditTask}
+                        onDelete={handleDeleteTask}
+                      />
+                    );
+                  })}
+                </View>
+              </View>
             </View>
-        );
+          );
+        }
+        case 'order-card': {
+          const po = item.po;
+          const isSelected = selectedOrders.has(po.order.id);
+          const threadLineStyle: any = {
+            position: 'absolute',
+            top: 0,
+            bottom: item.isLastInThread ? '50%' : 0,
+            width: 2,
+            backgroundColor: '#333',
+            ...(isRTL ? { right: 11 } : { left: 11 })
+          };
+          const contentPadding = isRTL 
+            ? { paddingRight: settings.compactMode ? 28 : 32, marginRight: 0 }
+            : { paddingLeft: settings.compactMode ? 28 : 32, marginLeft: 0 };
+
+          return (
+              <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
+                <View style={threadLineStyle} />
+                <PersonOrderCard
+                  po={po}
+                  selectionMode={selectionMode}
+                  isSelected={isSelected}
+                  compactMode={settings.compactMode}
+                  isRTL={isRTL}
+                  t={t}
+                  onLongPress={handleOrderLongPress}
+                  onPress={handleOrderPress}
+                  onEdit={handleEditOrder}
+                  onDelete={handleDeleteOrder}
+                  onPayAmount={setPayAmountOrder}
+                  onMarkPaid={handleMarkAllPaid}
+                  onMarkUnpaid={handleMarkAllUnpaid}
+                  onUnknownPrice={setUnknownPricePerson}
+                  onHistory={setLogPerson}
+                />
+              </View>
+          );
+        }
+        case 'empty-deliveries':
+          return (
+            <Text style={[styles.emptyText, settings.compactMode && styles.textSmall, { textAlign: 'center', marginTop: 20 }]}>
+              {t('run.noDeliveries')}
+            </Text>
+          );
+        default:
+          return null;
       }
-      case 'empty-deliveries':
-        return (
-          <Text style={[styles.emptyText, settings.compactMode && styles.textSmall, { textAlign: 'center', marginTop: 20 }]}>
-            {t('run.noDeliveries')}
-          </Text>
-        );
-      default:
-        return null;
-    }
+    })();
+
+    return (
+      <View onLayout={(e) => handleItemLayout(item.id, e.nativeEvent.layout.height)}>
+        {content}
+      </View>
+    );
   }, [
     collapsedLocations,
     collapsedSources,
@@ -1104,19 +1216,60 @@ export default function TheRunScreen() {
         />
       )}
 
-      <FlatList
-        data={flatListData}
-        renderItem={renderFlatItem}
-        keyExtractor={(item) => item.id}
-        style={styles.container}
-        contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact, { paddingBottom: 100 }]}
-        keyboardShouldPersistTaps="handled"
-        initialNumToRender={2}
-        maxToRenderPerBatch={2}
-        windowSize={3}
-        updateCellsBatchingPeriod={50}
-        removeClippedSubviews={true}
-      />
+      <View style={{ flex: 1, position: 'relative' }}>
+        {(activeLocation || activePerson) && (
+          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, backgroundColor: '#1a1a1a', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 3, elevation: 5 }}>
+            {activeLocation && (
+              <View 
+                onLayout={e => { locationHeaderHeight.current = e.nativeEvent.layout.height; }}
+                style={{ paddingHorizontal: settings.compactMode ? 8 : 15, paddingTop: 0, paddingBottom: 10 }}>
+                <TouchableOpacity
+                  style={[styles.locationHeaderRow, settings.compactMode && styles.locationHeaderRowCompact, { marginBottom: 0, borderBottomWidth: 0 }]}
+                  onPress={() => toggleLocationCollapse(activeLocation)}
+                  activeOpacity={0.7}>
+                  <FontAwesome
+                    name={collapsedLocations[activeLocation] ? 'caret-right' : 'caret-down'}
+                    size={settings.compactMode ? 16 : 20}
+                    color={LIGHT_GOLD}
+                    style={{ width: 24, textAlign: 'center' }}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    style={[styles.deliveryLocationTitle, settings.compactMode && styles.deliveryLocationTitleCompact, { flex: 1 }]}>
+                    📍 {activeLocation}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {activePerson && (
+              <View style={{ paddingHorizontal: settings.compactMode ? 8 : 15, paddingBottom: 10 }}>
+                <View style={[styles.personHeaderRow, settings.compactMode && styles.personHeaderRowCompact, { marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }]}>
+                  <FontAwesome name="user" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} style={{ width: 24, textAlign: 'center' }} />
+                  <Text style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact, { flex: 1 }]}>
+                    {activePerson.name}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        <FlatList
+          data={flatListData}
+          renderItem={renderFlatItem}
+          keyExtractor={(item) => item.id}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          style={styles.container}
+          contentContainerStyle={[styles.content, settings.compactMode && styles.contentCompact, { paddingBottom: 100 }]}
+          keyboardShouldPersistTaps="handled"
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={false}
+        />
+      </View>
 
       {unknownPricePerson && (
         <UnknownPriceModal
