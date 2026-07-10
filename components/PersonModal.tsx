@@ -48,7 +48,6 @@ export default function PersonModal({
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustNote, setAdjustNote] = useState('');
   const [logVisible, setLogVisible] = useState(false);
-  const [activeFocus, setActiveFocus] = useState<string | null>(null);
   const [namesCorpus, setNamesCorpus] = useState<string[]>(COMMON_NAMES_CORPUS);
   const { settings } = useSettings();
   const { t } = useTranslation();
@@ -183,121 +182,86 @@ export default function PersonModal({
             {mode === 'create' ? t('modals.addNewPerson') : t('modals.editPerson', { name: initialName })}
           </Text>
 
-          {activeFocus && (
-            <TouchableOpacity 
-              style={[styles.exitSearchBtn, settings.compactMode && styles.exitSearchBtnCompact]} 
-              onPress={() => {
-                setActiveFocus(null);
-                Keyboard.dismiss();
-              }}
-            >
-              <FontAwesome name={I18nManager.isRTL ? "chevron-right" : "chevron-left"} size={settings.compactMode ? 12 : 14} color={ACCENT_GOLD} />
-              <Text style={[styles.exitSearchText, settings.compactMode && styles.textSmall]}>{t('common.exitFocusMode')}</Text>
-            </TouchableOpacity>
-          )}
-
           {/* Name */}
-          {(!activeFocus || activeFocus === 'name') && (
-            <>
-              <Text style={styles.label}>{t('modals.nameLabel')}</Text>
-              <SmartTextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                onFocus={() => setActiveFocus('name')}
-                onBlur={() => { if (!name) setActiveFocus(null); }}
-                placeholder={t('modals.namePlaceholder')}
-                placeholderTextColor="#888"
-                corpus={namesCorpus}
-                compactMode={settings.compactMode}
-              />
-            </>
-          )}
+          <Text style={styles.label}>{t('modals.nameLabel')}</Text>
+          <SmartTextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder={t('modals.namePlaceholder')}
+            placeholderTextColor="#888"
+            corpus={namesCorpus}
+            compactMode={settings.compactMode}
+          />
 
           {/* Typical Place */}
-          {(!activeFocus || activeFocus === 'place') && (
-            <>
-              <Text style={styles.label}>{t('modals.placeLabel')}</Text>
-              <TextInput
-                style={styles.input}
-                value={place}
-                onChangeText={(text) => {
-                  setPlace(text);
-                  setShowPlaceSuggestions(text.length > 0);
-                }}
-                onFocus={() => {
-                  setActiveFocus('place');
-                  if (place.length > 0) setShowPlaceSuggestions(true);
-                }}
-                onBlur={() => {
-                  setTimeout(() => {
+          <Text style={styles.label}>{t('modals.placeLabel')}</Text>
+          <TextInput
+            style={styles.input}
+            value={place}
+            onChangeText={(text) => {
+              setPlace(text);
+              setShowPlaceSuggestions(text.length > 0);
+            }}
+            onBlur={() => {
+              setTimeout(() => {
+                setShowPlaceSuggestions(false);
+              }, 150);
+            }}
+            placeholder={t('modals.placePlaceholder')}
+            placeholderTextColor="#888"
+          />
+          {showPlaceSuggestions && filteredPlaces.length > 0 && (
+            <View style={styles.suggestionsContainer}>
+              {filteredPlaces.map((suggestion, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.suggestionItem}
+                  onPress={() => {
+                    setPlace(suggestion);
                     setShowPlaceSuggestions(false);
-                    if (!place) setActiveFocus(null);
-                  }, 150);
-                }}
-                placeholder={t('modals.placePlaceholder')}
-                placeholderTextColor="#888"
-              />
-              {showPlaceSuggestions && filteredPlaces.length > 0 && (
-                <View style={styles.suggestionsContainer}>
-                  {filteredPlaces.map((suggestion, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={styles.suggestionItem}
-                      onPress={() => {
-                        setPlace(suggestion);
-                        setShowPlaceSuggestions(false);
-                        setActiveFocus(null);
-                      }}>
-                      <Text style={styles.suggestionText}>{suggestion}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </>
+                  }}>
+                  <Text style={styles.suggestionText}>{suggestion}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           )}
 
           {/* Nicknames/Aliases */}
-          {(!activeFocus || activeFocus === 'aliases') && (
-            <>
-              <Text style={styles.label}>{t('modals.aliasesLabelPerson')}</Text>
-              <Text style={styles.hint}>
-                {t('modals.aliasesHintPerson')}
-              </Text>
-              {aliases.map((alias, idx) => (
-                <View key={idx} style={styles.aliasRow}>
-                  <Text style={styles.aliasText}>{alias}</Text>
-                  <TouchableOpacity onPress={() => removeAlias(idx)} style={styles.removeAliasBtn}>
-                    <FontAwesome name="times-circle" size={20} color="#ff4444" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <View style={styles.addAliasRow}>
-                <SmartTextInput
-                  style={[styles.input, { flex: 1, marginBottom: 0 }]}
-                  value={newAlias}
-                  onChangeText={setNewAlias}
-                  onFocus={() => setActiveFocus('aliases')}
-                  onBlur={() => { if (!newAlias) setActiveFocus(null); }}
-                  placeholder={t('modals.addAliasPlaceholderPerson')}
-                  placeholderTextColor="#888"
-                  onSubmitEditing={addAlias}
-                  returnKeyType="done"
-                  corpus={namesCorpus}
-                  compactMode={settings.compactMode}
-                />
-                <TouchableOpacity
-                  style={[styles.addAliasBtn, !newAlias.trim() && { opacity: 0.4 }]}
-                  onPress={addAlias}
-                  disabled={!newAlias.trim()}>
-                  <FontAwesome name="plus" size={16} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
+          <Text style={styles.label}>{t('modals.aliasesLabelPerson')}</Text>
+          <Text style={styles.hint}>
+            {t('modals.aliasesHintPerson')}
+          </Text>
+          {aliases.map((alias, idx) => (
+            <View key={idx} style={styles.aliasRow}>
+              <Text style={styles.aliasText}>{alias}</Text>
+              <TouchableOpacity onPress={() => removeAlias(idx)} style={styles.removeAliasBtn}>
+                <FontAwesome name="times-circle" size={20} color="#ff4444" />
+              </TouchableOpacity>
+            </View>
+          ))}
+          <View style={styles.addAliasRow}>
+            <SmartTextInput
+              style={[styles.input, { flex: 1, marginBottom: 0 }]}
+              value={newAlias}
+              onChangeText={setNewAlias}
+              placeholder={t('modals.addAliasPlaceholderPerson')}
+              placeholderTextColor="#888"
+              onSubmitEditing={addAlias}
+              returnKeyType="done"
+              corpus={namesCorpus}
+              compactMode={settings.compactMode}
+            />
+            <TouchableOpacity
+              style={[styles.addAliasBtn, !newAlias.trim() && { opacity: 0.4 }]}
+              onPress={addAlias}
+              disabled={!newAlias.trim()}>
+              <FontAwesome name="plus" size={16} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
           {/* Credit Adjustment (edit mode only) */}
-          {!activeFocus && mode === 'edit' && (
+          {mode === 'edit' && (
             <>
               <View style={styles.divider} />
               <Text style={styles.label}>{t('modals.adjustCredit')}</Text>
@@ -349,26 +313,24 @@ export default function PersonModal({
           )}
 
           {/* Action Buttons */}
-          {!activeFocus && (
-            <View style={[styles.buttonRow, settings.compactMode && styles.buttonRowCompact]}>
-              {mode === 'edit' && (
-                <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-                  <FontAwesome name="trash" size={settings.compactMode ? 14 : 18} color="#ff4444" />
-                  <Text style={[styles.deleteBtnText, settings.compactMode && styles.textSmall]}>{t('common.delete')}</Text>
-                </TouchableOpacity>
-              )}
-              <View style={{ flex: 1 }} />
-              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                <Text style={[styles.cancelBtnText, settings.compactMode && styles.textSmall]}>{t('common.cancel')}</Text>
+          <View style={[styles.buttonRow, settings.compactMode && styles.buttonRowCompact]}>
+            {mode === 'edit' && (
+              <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+                <FontAwesome name="trash" size={settings.compactMode ? 14 : 18} color="#ff4444" />
+                <Text style={[styles.deleteBtnText, settings.compactMode && styles.textSmall]}>{t('common.delete')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitBtn, !name.trim() && { opacity: 0.5 }, settings.compactMode && styles.submitBtnCompact]}
-                onPress={handleSubmit}
-                disabled={!name.trim()}>
-                <Text style={[styles.submitBtnText, settings.compactMode && styles.textSmall]}>{mode === 'create' ? t('modals.addPersonBtn') : t('modals.saveChanges')}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+            )}
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
+              <Text style={[styles.cancelBtnText, settings.compactMode && styles.textSmall]}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.submitBtn, !name.trim() && { opacity: 0.5 }, settings.compactMode && styles.submitBtnCompact]}
+              onPress={handleSubmit}
+              disabled={!name.trim()}>
+              <Text style={[styles.submitBtnText, settings.compactMode && styles.textSmall]}>{mode === 'create' ? t('modals.addPersonBtn') : t('modals.saveChanges')}</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </View>
 
@@ -575,21 +537,4 @@ const styles = StyleSheet.create({
   submitBtnCompact: { paddingVertical: 8, paddingHorizontal: 15 },
   textSmall: { fontSize: 14 },
   textExtraSmall: { fontSize: 11 },
-  exitSearchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#444',
-  },
-  exitSearchBtnCompact: {
-    paddingVertical: 5,
-    marginBottom: 5,
-  },
-  exitSearchText: {
-    color: ACCENT_GOLD,
-    fontWeight: 'bold',
-  },
 });

@@ -48,8 +48,6 @@ export default function TheRunScreen() {
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   const [optimisticTasks, setOptimisticTasks] = useState<Record<string, boolean>>({});
   const [paidItems, setPaidItems] = useState<Record<string, boolean>>({});
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
 
   // Unknown price notes modal
   const [unknownPricePerson, setUnknownPricePerson] = useState<{ id: string; name: string } | null>(null);
@@ -320,123 +318,93 @@ export default function TheRunScreen() {
     const listStart = performance.now();
     const list: any[] = [];
 
-    if (isSearching) {
-      list.push({ type: 'exit-search', id: 'exit-search' });
+    if (generalTasks.length > 0) {
+      list.push({ type: 'general-tasks', id: 'general-tasks', tasks: generalTasks });
     }
 
-    if (!isSearching) {
-      if (generalTasks.length > 0) {
-        list.push({ type: 'general-tasks', id: 'general-tasks', tasks: generalTasks });
+    if (physicalChecklist.length > 0) {
+      list.push({ type: 'physical-checklist', id: 'physical-checklist', tasks: physicalChecklist });
+      list.push({ type: 'separator', id: 'shopping-separator-checklist' });
+    }
+
+    list.push({ type: 'shopping-header', id: 'shopping-header', listTotal });
+
+    Object.entries(aggregatedItems).forEach(([timingKey, sources]) => {
+      if (settings.groupByFreshness && timingKey !== '_all') {
+        list.push({ type: 'shopping-timing', id: `timing-${timingKey}`, timingKey });
       }
-
-      if (physicalChecklist.length > 0) {
-        list.push({ type: 'physical-checklist', id: 'physical-checklist', tasks: physicalChecklist });
-        list.push({ type: 'separator', id: 'shopping-separator-checklist' });
-      }
-
-      list.push({ type: 'shopping-header', id: 'shopping-header', listTotal });
-
-      Object.entries(aggregatedItems).forEach(([timingKey, sources]) => {
-        if (settings.groupByFreshness && timingKey !== '_all') {
-          list.push({ type: 'shopping-timing', id: `timing-${timingKey}`, timingKey });
-        }
-        Object.entries(sources).forEach(([source, itemsList]) => {
-          const sourceKey = `${timingKey}-${source}`;
-          list.push({
-            type: 'shopping-source',
-            id: `source-${sourceKey}`,
-            source,
-            itemsList,
-            sourceKey,
-          });
+      Object.entries(sources).forEach(([source, itemsList]) => {
+        const sourceKey = `${timingKey}-${source}`;
+        list.push({
+          type: 'shopping-source',
+          id: `source-${sourceKey}`,
+          source,
+          itemsList,
+          sourceKey,
         });
       });
+    });
 
-      list.push({ type: 'separator', id: 'shopping-separator' });
-    }
+    list.push({ type: 'separator', id: 'shopping-separator' });
 
     list.push({ type: 'deliveries-header', id: 'deliveries-header' });
 
-    let totalFoundOrders = 0;
     peopleOrders.forEach((group) => {
-      const q = searchQuery.toLowerCase().trim();
-      const filteredOrders = !q ? group.orders : group.orders.filter(po => {
-        const itemNames = po.items.map(i => i.itemDef?.name || '').join(' ');
-        const searchString = [
-          po.person.name,
-          po.deliveryPlace,
-          itemNames,
-          po.totalCost.toFixed(2)
-        ].join(' ').toLowerCase();
-        return searchString.includes(q);
+      list.push({
+        type: 'location-header',
+        id: `location-${group.location}`,
+        location: group.location,
       });
 
-      if (filteredOrders.length > 0) {
-        list.push({
-          type: 'location-header',
-          id: `location-${group.location}`,
-          location: group.location,
-        });
-
-        const isCollapsed = collapsedLocations[group.location];
-        if (!isCollapsed) {
-          filteredOrders.forEach((po, index) => {
-            totalFoundOrders++;
-            
-            // 1. Person Header
-            list.push({
-              type: 'person-header',
-              id: `person-header-${po.person.id}-${po.order.id}`,
-              person: po.person,
-              deliveryPlace: po.deliveryPlace
-            });
-            
-            const hasTasks = po.tasks && po.tasks.length > 0;
-            const hasOrder = po.items && po.items.length > 0;
-            
-            // 2. Order Card
-            if (hasOrder) {
-              list.push({
-                type: 'order-card',
-                id: `order-card-${po.order.id}`,
-                po,
-                isLastInThread: !hasTasks
-              });
-            }
-
-            // 3. Task Card
-            if (hasTasks) {
-              list.push({
-                type: 'task-card',
-                id: `task-card-${po.person.id}-${po.order.id}`,
-                po,
-                isLastInThread: !hasOrder
-              });
-            }
+      const isCollapsed = collapsedLocations[group.location];
+      if (!isCollapsed) {
+        group.orders.forEach((po, index) => {
+          // 1. Person Header
+          list.push({
+            type: 'person-header',
+            id: `person-header-${po.person.id}-${po.order.id}`,
+            person: po.person,
+            deliveryPlace: po.deliveryPlace
           });
-        }
+          
+          const hasTasks = po.tasks && po.tasks.length > 0;
+          const hasOrder = po.items && po.items.length > 0;
+          
+          // 2. Order Card
+          if (hasOrder) {
+            list.push({
+              type: 'order-card',
+              id: `order-card-${po.order.id}`,
+              po,
+              isLastInThread: !hasTasks
+            });
+          }
+
+          // 3. Task Card
+          if (hasTasks) {
+            list.push({
+              type: 'task-card',
+              id: `task-card-${po.person.id}-${po.order.id}`,
+              po,
+              isLastInThread: !hasOrder
+            });
+          }
+        });
       }
     });
 
-    if (peopleOrders.length === 0 && !isSearching) {
+    if (peopleOrders.length === 0) {
       list.push({ type: 'empty-deliveries', id: 'empty-deliveries' });
-    }
-
-    const q = searchQuery.toLowerCase().trim();
-    if (q && totalFoundOrders === 0) {
-      list.push({ type: 'no-results', id: 'no-results' });
     }
 
     const listEnd = performance.now();
     perfLog(`[PERF] [flatListData useMemo] Completed in ${(listEnd - listStart).toFixed(2)}ms, generated ${list.length} items.`);
     return list;
   }, [
-    isSearching,
     listTotal,
     aggregatedItems,
     settings.groupByFreshness,
     peopleOrders,
-    searchQuery,
     collapsedLocations,
     collapsedSources,
     selectedOrders,
@@ -519,20 +487,6 @@ export default function TheRunScreen() {
   const renderFlatItem = React.useCallback(({ item }: { item: any }) => {
     perfLog(`[PERF] [RenderItem called] Render #${currentRender} - type=${item.type} id=${item.id}`);
     switch (item.type) {
-      case 'exit-search':
-        return (
-          <TouchableOpacity
-            style={[styles.exitSearchBtn, settings.compactMode && styles.exitSearchBtnCompact]}
-            onPress={() => {
-              setIsSearching(false);
-              setSearchQuery('');
-              Keyboard.dismiss();
-            }}
-          >
-            <FontAwesome name={I18nManager.isRTL ? "chevron-right" : "chevron-left"} size={settings.compactMode ? 12 : 14} color={ACCENT_GOLD} />
-            <Text style={[styles.exitSearchText, settings.compactMode && styles.textSmall]}>{t('run.exitSearch')}</Text>
-          </TouchableOpacity>
-        );
       case 'general-tasks':
         return (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.generalTasksRow} contentContainerStyle={{ gap: 10 }}>
@@ -622,15 +576,6 @@ export default function TheRunScreen() {
               <FontAwesome name="truck" size={settings.compactMode ? 18 : 22} color={ACCENT_GOLD} />
               <Text style={[styles.sectionTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.deliveries')}</Text>
             </View>
-            <TextInput
-              style={[styles.searchInput, settings.compactMode && styles.searchInputCompact]}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onFocus={() => setIsSearching(true)}
-              onBlur={() => { if (!searchQuery) setIsSearching(false); }}
-              placeholder={t('run.searchPerson')}
-              placeholderTextColor="#888"
-            />
           </View>
         );
       case 'location-header': {
@@ -754,19 +699,10 @@ export default function TheRunScreen() {
             {t('run.noDeliveries')}
           </Text>
         );
-      case 'no-results':
-        return (
-          <View style={styles.noResultsContainer}>
-            <FontAwesome name="search" size={48} color="#444" style={{ marginBottom: 10 }} />
-            <Text style={styles.noResultsText}>{t('run.noOrdersFound', { query: searchQuery })}</Text>
-          </View>
-        );
       default:
         return null;
     }
   }, [
-    isSearching,
-    searchQuery,
     collapsedLocations,
     collapsedSources,
     selectedOrders,

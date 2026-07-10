@@ -42,7 +42,6 @@ export default function StatsScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mergeModalVisible, setMergeModalVisible] = useState(false);
-  const [isSearching, setIsSearching] = useState(false);
 
   // Sorting State
   const [itemSort, setItemSort] = useState<'none' | 'lexical' | 'price' | 'date'>('none');
@@ -358,22 +357,8 @@ export default function StatsScreen() {
   const renderHeader = React.useCallback(() => {
     return (
       <View>
-        {isSearching && (
-          <TouchableOpacity 
-            style={[styles.exitSearchBtn, settings.compactMode && styles.exitSearchBtnCompact]} 
-            onPress={() => { 
-              setIsSearching(false); 
-              setSearchQuery(''); 
-              Keyboard.dismiss();
-            }}
-          >
-            <FontAwesome name={I18nManager.isRTL ? "chevron-right" : "chevron-left"} size={settings.compactMode ? 12 : 14} color={ACCENT_GOLD} />
-            <Text style={[styles.exitSearchText, settings.compactMode && styles.textSmall]}>{t('addOrder.exitSearch')}</Text>
-          </TouchableOpacity>
-        )}
-
         {/* STATISTICS SECTION */}
-        {!isSearching && stats && (
+        {stats && (
           <View>
             <Text style={[styles.sectionTitle, settings.compactMode && styles.sectionTitleCompact]}>{t('stats.appStatsTitle')}</Text>
             <View style={[styles.statsCard, settings.compactMode && styles.statsCardCompact]}>
@@ -445,14 +430,12 @@ export default function StatsScreen() {
             style={[styles.dictionarySearch, settings.compactMode && styles.dictionarySearchCompact]}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            onFocus={() => setIsSearching(true)}
-            onBlur={() => { if (!searchQuery) setIsSearching(false); }}
             placeholder={t('stats.searchDict', { tab: activeTab === 'Items' ? t('stats.tabItems') : activeTab === 'Places' ? t('stats.tabPlaces') : t('stats.tabSources') })}
             placeholderTextColor="#888"
           />
         </View>
 
-        {!isSearching && !selectionMode && (
+        {!selectionMode && (
           <View style={[styles.sortBar, settings.compactMode && styles.sortBarCompact]}>
             <Text style={[styles.sortLabel, settings.compactMode && styles.textExtraSmall]}>{t('stats.sortLabel')}</Text>
             
@@ -501,7 +484,6 @@ export default function StatsScreen() {
       </View>
     );
   }, [
-    isSearching,
     stats,
     selectionMode,
     selectedIds.size,
@@ -584,24 +566,6 @@ const styles = StyleSheet.create({
   listItem: { color: '#ddd', fontSize: 15, marginStart: 10, marginBottom: 5, textAlign: 'left' },
   separator: { height: 1, backgroundColor: '#555', marginVertical: 20 },
   helperText: { color: '#888', fontSize: 13, textAlign: 'center', marginBottom: 15, fontStyle: 'italic' },
-  exitSearchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 15,
-    backgroundColor: '#1a1a1a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-    marginBottom: 10,
-  },
-  exitSearchBtnCompact: {
-    padding: 8,
-    marginBottom: 5,
-  },
-  exitSearchText: {
-    color: ACCENT_GOLD,
-    fontWeight: 'bold',
-  },
   
   dictionaryHeader: { marginBottom: 10 },
   tabRow: { flexDirection: 'row', backgroundColor: '#222', borderRadius: 8, padding: 4, marginBottom: 10 },

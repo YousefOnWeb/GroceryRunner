@@ -35,7 +35,6 @@ export default function UnsettledScreen() {
 
   // State
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
   const [groupBy, setGroupBy] = useState<'day' | 'person' | 'none'>('day');
   const [sortBy, setSortBy] = useState<'date' | 'amount' | 'name'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -469,25 +468,9 @@ export default function UnsettledScreen() {
   const renderHeader = () => {
     return (
       <View>
-        {isSearching && (
-          <TouchableOpacity
-            style={[styles.exitSearchBtn, settings.compactMode && styles.exitSearchBtnCompact]}
-            onPress={() => {
-              setIsSearching(false);
-              setSearchQuery('');
-              Keyboard.dismiss();
-            }}
-          >
-            <FontAwesome name={I18nManager.isRTL ? "chevron-right" : "chevron-left"} size={settings.compactMode ? 12 : 14} color={ACCENT_GOLD} />
-            <Text style={[styles.exitSearchText, settings.compactMode && styles.textSmall]}>{t('addOrder.exitSearch')}</Text>
-          </TouchableOpacity>
-        )}
-
-        {!isSearching && (
-          <View style={[styles.headerRow, settings.compactMode && styles.headerRowCompact]}>
-            <Text style={[styles.title, settings.compactMode && styles.titleCompact]}>{t('unsettled.title')}</Text>
-          </View>
-        )}
+        <View style={[styles.headerRow, settings.compactMode && styles.headerRowCompact]}>
+          <Text style={[styles.title, settings.compactMode && styles.titleCompact]}>{t('unsettled.title')}</Text>
+        </View>
 
         {/* Total Owed Banner */}
         <LinearGradient
@@ -515,13 +498,10 @@ export default function UnsettledScreen() {
             onChangeText={setSearchQuery}
             placeholder={t('unsettled.searchPlaceholder')}
             placeholderTextColor="#888"
-            onFocus={() => setIsSearching(true)}
-            onBlur={() => { if (!searchQuery) setIsSearching(false); }}
           />
         </View>
 
-        {!isSearching && (
-          <View style={[
+        <View style={[
             styles.filterBarRow, 
             settings.compactMode && styles.filterBarRowCompact,
           ]}>
@@ -584,7 +564,6 @@ export default function UnsettledScreen() {
               </View>
             </View>
           </View>
-        )}
       </View>
     );
   };
@@ -1043,23 +1022,6 @@ const styles = StyleSheet.create({
   },
   searchContainerCompact: {
     marginBottom: 8,
-  },
-
-  exitSearchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 15,
-    backgroundColor: '#1a1a1a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
-  },
-  exitSearchBtnCompact: {
-    padding: 8,
-  },
-  exitSearchText: {
-    color: ACCENT_GOLD,
-    fontWeight: 'bold',
   },
 
   // Group Header Styling
