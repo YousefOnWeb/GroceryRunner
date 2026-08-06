@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 // Modals
 import CreditLogModal from '@/components/CreditLogModal';
 import UnknownPriceModal from '@/components/UnknownPriceModal';
-import PromptModal from '@/components/PromptModal';
+import SettleUpModal from '@/components/SettleUpModal';
 import PersonOrdersModal from '@/components/PersonOrdersModal';
 import DropdownSelect from '@/components/DropdownSelect';
 
@@ -42,7 +42,7 @@ export default function UnsettledScreen() {
   // Modal States
   const [unknownPricePerson, setUnknownPricePerson] = useState<{ id: string; name: string } | null>(null);
   const [logPerson, setLogPerson] = useState<{ id: string; name: string } | null>(null);
-  const [payAmountOrder, setPayAmountOrder] = useState<{ id: string; personId: string; total: number; personName: string; date: string } | null>(null);
+  const [payAmountOrder, setPayAmountOrder] = useState<{ id: string; personId: string; total: number; personName: string; date: string; currentBalance: number } | null>(null);
   const [ordersPerson, setOrdersPerson] = useState<{ id: string; name: string } | null>(null);
 
   const renderCountRef = useRef(0);
@@ -58,7 +58,7 @@ export default function UnsettledScreen() {
 
   // Drizzle Queries
   const { data: allUnsettledOrders } = useLiveQuery(
-    db.select().from(orders).where(eq(orders.isPaid, false))
+    db.select().from(orders).where(eq(orders.isSettled, false))
   );
 
   const { data: allUnsettledOrderItems } = useLiveQuery(
@@ -68,11 +68,10 @@ export default function UnsettledScreen() {
       itemId: orderItems.itemId,
       quantity: orderItems.quantity,
       unitPrice: orderItems.unitPrice,
-      isPaid: orderItems.isPaid,
-    })
+      })
     .from(orderItems)
     .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(eq(orders.isPaid, false))
+    .where(eq(orders.isSettled, false))
   );
 
   const { data: catalog } = useLiveQuery(db.select().from(items));
@@ -100,14 +99,14 @@ export default function UnsettledScreen() {
         const cost = (oi.unitPrice ?? 0) * oi.quantity;
         totalCost += cost;
 
-        if (!oi.isPaid) {
-          unpaidCost += cost;
-          hasUnpaidItems = true;
-          if (oi.unitPrice === null) hasUnknownPriceItems = true;
-        }
+        if (oi.unitPrice === null) hasUnknownPriceItems = true;
 
         return { ...oi, itemDef };
       });
+
+      if (!order.isSettled) {
+        unpaidCost = totalCost;
+      }
 
       return {
         order,
@@ -115,7 +114,7 @@ export default function UnsettledScreen() {
         items: orderDetails,
         totalCost,
         unpaidCost,
-        hasUnpaidItems,
+        hasUnpaidItems: true,
         hasUnknownPriceItems,
         deliveryPlace: order.deliveryPlace || person?.typicalPlace || null
       };
@@ -266,57 +265,29 @@ export default function UnsettledScreen() {
   }, [sortedOrders, groupBy, sortOrder]);
 
   // Order Handlers
-  const handleMarkAllPaid = React.useCallback(async (orderId: string, personId: string) => {
-    try {
-      await api.markOrderPaid(orderId, personId);
-    } catch (e) {
-      console.error(e);
-      Alert.alert(t('common.error'), t('run.failedMarkPaid'));
-    }
-  }, [t]);
+  const handleMarkAllPaid = React.useCallback(async (orderId: string, personId: string) => {}, []);
 
-  const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {
-    try {
-      await api.markOrderUnpaid(orderId, personId);
-    } catch (e) {
-      console.error(e);
-      Alert.alert(t('common.error'), t('run.failedMarkUnpaid'));
-    }
-  }, [t]);
+  const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {}, []);
 
-  const handleCustomPayment = async (value: string, markAllPast: boolean = false) => {
+  const handleCustomPayment = async (amount: number, note: string, markSettled?: boolean) => { 
     if (!payAmountOrder) return;
-    const paidAmount = parseFloat(value);
-    if (isNaN(paidAmount)) {
-      Alert.alert(t('common.error'), t('common.invalidAmount'));
-      return;
-    }
-
-    const { id: orderId, personId, total: orderTotal, date: orderDate } = payAmountOrder;
-    setPayAmountOrder(null);
-
     try {
-      if (markAllPast) {
-        await api.markAllOrdersPaidSilently(personId);
-      } else {
-        await api.markOrderPaid(orderId, personId);
+      await api.receivePayment(payAmountOrder.personId, amount, note);
+      if (markSettled) {
+        await api.markOrderSettled(payAmountOrder.id, true);
       }
-
-      const diff = markAllPast ? paidAmount : paidAmount - orderTotal;
-      if (Math.abs(diff) > 0.001 || (markAllPast && paidAmount !== 0)) {
-        await api.changeBalance(personId, markAllPast ? paidAmount : diff, t('run.paymentAdjustment', { date: orderDate }));
-      }
+      setPayAmountOrder(null);
     } catch (e) {
       console.error(e);
-      Alert.alert(t('common.error'), t('run.failedMarkPaid'));
+      Alert.alert(t('common.error'), 'Failed to process payment.');
     }
   };
 
-  const handleDeleteOrder = React.useCallback((orderId: string, personName: string, isPaid: boolean) => {
-    if (isPaid) {
+  const handleDeleteOrder = React.useCallback((orderId: string, personName: string, isSettled: boolean) => {
+    if (isSettled) {
       Alert.alert(
         t('run.deleteOrderTitle'),
-        t('run.deletePaidOrderConfirm', { name: personName }),
+        t('run.deleteSettledOrderConfirm', { name: personName }),
         [
           { text: t('common.cancel'), style: 'cancel' },
           {
@@ -378,7 +349,7 @@ export default function UnsettledScreen() {
     });
   }, [router]);
 
-  const handlePayAmountRequest = React.useCallback((payInfo: { id: string; personId: string; total: number; personName: string; targetDate: string }) => {
+  const handlePayAmountRequest = React.useCallback((payInfo: { id: string; personId: string; total: number; personName: string; targetDate: string; currentBalance: number }) => {
     setPayAmountOrder({ ...payInfo, date: payInfo.targetDate });
   }, []);
 
@@ -411,7 +382,7 @@ export default function UnsettledScreen() {
         </Text>
         <View style={styles.groupMeta}>
           <Text style={[styles.groupMetaText, settings.compactMode && styles.textExtraSmall]}>
-            {t('unsettled.unpaidOrdersCount', { count })}
+            {t('unsettled.unsettledOrdersCount', { count })}
           </Text>
           <Text style={[styles.groupTotalCost, settings.compactMode && styles.groupTitleCompact]}>
             ${total.toFixed(2)}
@@ -631,17 +602,15 @@ export default function UnsettledScreen() {
         />
       )}
 
-      {/* Custom Payment Prompt Modal */}
+      {/* Custom Payment Modal */}
       {payAmountOrder && (
-        <PromptModal
+        <SettleUpModal
           visible={!!payAmountOrder}
-          title={t('run.payAmountTitle')}
-          message={t('run.payAmountMsg', { total: payAmountOrder.total.toFixed(2), name: payAmountOrder.personName })}
-          defaultValue={payAmountOrder.total.toFixed(2)}
-          keyboardType="numeric"
-          showToggle={true}
-          toggleLabel={t('run.markAllPastAsPaid')}
-          onCancel={() => setPayAmountOrder(null)}
+          personId={payAmountOrder.personId}
+          personName={payAmountOrder.personName}
+          currentBalance={payAmountOrder.currentBalance}
+          orderId={payAmountOrder.id}
+          onClose={() => setPayAmountOrder(null)}
           onSubmit={handleCustomPayment}
         />
       )}
@@ -680,15 +649,15 @@ const OrderItemRow = React.memo(function OrderItemRow({
   return (
     <RNView style={[styles.itemRow2, compactMode && styles.itemRow2Compact]}>
       <RNView style={[styles.itemInfo, { alignItems: 'center', flexDirection: 'row', gap: 8, flexShrink: 1, overflow: 'hidden' }]}>
-        <RNView style={[styles.quantityBadge, compactMode && styles.quantityBadgeCompact, item.isPaid && styles.quantityBadgeCrossed]}>
-          <Text style={[styles.quantityText, compactMode && styles.quantityTextCompact, item.isPaid && styles.quantityTextCrossed]}>
+        <RNView style={[styles.quantityBadge, compactMode && styles.quantityBadgeCompact]}>
+          <Text style={[styles.quantityText, compactMode && styles.quantityTextCompact]}>
             x{item.quantity}
           </Text>
         </RNView>
         <Text
           numberOfLines={1}
           ellipsizeMode="tail"
-          style={[styles.itemText, { flexShrink: 1, marginStart: 0 }, compactMode && styles.textExtraSmall, item.isPaid && styles.personItemPaid]}>
+          style={[styles.itemText, { flexShrink: 1, marginStart: 0 }, compactMode && styles.textExtraSmall]}>
           {isRTL ? '\u200F' : ''}{item.itemDef?.name}
         </Text>
       </RNView>
@@ -696,7 +665,7 @@ const OrderItemRow = React.memo(function OrderItemRow({
         {item.unitPrice === null ? (
           <Text style={[styles.itemPrice, { color: '#ffeb3b', fontStyle: 'italic' }, compactMode && styles.textExtraSmall]}>{t('common.priceTBD')}</Text>
         ) : itemCost > 0 ? (
-          <Text style={[styles.itemPrice, compactMode && styles.textExtraSmall, item.isPaid && styles.personItemPaid]}>${itemCost.toFixed(2)}</Text>
+          <Text style={[styles.itemPrice, compactMode && styles.textExtraSmall]}>${itemCost.toFixed(2)}</Text>
         ) : null}
       </RNView>
     </RNView>
@@ -710,8 +679,8 @@ interface UnsettledOrderCardProps {
   t: (key: string, params?: any) => string;
   showDate: boolean;
   onEdit: (order: any, person: any) => void;
-  onDelete: (orderId: string, personName: string, isPaid: boolean) => void;
-  onPayAmount: (payInfo: { id: string; personId: string; total: number; personName: string; targetDate: string }) => void;
+  onDelete: (orderId: string, personName: string, isSettled: boolean) => void;
+  onPayAmount: (payInfo: { id: string; personId: string; total: number; personName: string; targetDate: string; currentBalance: number }) => void;
   onMarkPaid: (orderId: string, personId: string) => void;
   onMarkUnpaid: (orderId: string, personId: string) => void;
   onUnknownPrice: (personInfo: { id: string; name: string }) => void;
@@ -819,7 +788,7 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
                   <TouchableOpacity onPress={() => onEdit(po.order, po.person)} style={styles.editOrderBtn}>
                     <FontAwesome name="edit" size={compactMode ? 14 : 16} color={ACCENT_GOLD} />
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => onDelete(po.order.id, po.person.name, po.order.isPaid)} style={styles.deleteOrderBtn}>
+                  <TouchableOpacity onPress={() => onDelete(po.order.id, po.person.name, po.order.isSettled)} style={styles.deleteOrderBtn}>
                     <FontAwesome name="trash" size={compactMode ? 14 : 16} color="#ff4444" />
                   </TouchableOpacity>
                 </RNView>
@@ -834,10 +803,10 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
               <RNView style={[styles.statusContainer, compactMode && { height: 16 }]}>
                 <Text style={[
                   styles.statusText, 
-                  po.unpaidCost > 0 ? styles.statusUnpaid : styles.statusPaid, 
+                  po.unpaidCost > 0 ? styles.statusUnsettled : styles.statusSettled, 
                   compactMode && styles.textExtraSmall
                 ]}>
-                  {po.hasUnknownPriceItems ? t('run.statusAwaitingPrices') : po.unpaidCost > 0 ? t('run.statusUnpaid') : t('run.statusPaid')}
+                  {po.hasUnknownPriceItems ? t('run.statusAwaitingPrices') : po.unpaidCost > 0 ? t('run.statusUnsettled') : t('run.statusSettled')}
                 </Text>
               </RNView>
             </RNView>
@@ -860,14 +829,14 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
         <RNView style={[
           styles.personFooter,
           compactMode && styles.personFooterCompact,
-          po.person.balance < 0 ? styles.footerDebt : po.person.balance > 0 ? styles.footerCredit : null
+          po.person.balance > 0 ? styles.footerDebt : po.person.balance < 0 ? styles.footerCredit : null
         ]}>
           <RNView>
             <RNView style={styles.balanceHeaderRow}>
-              <Text style={[styles.balanceLabel, compactMode && styles.textExtraSmall, po.person.balance < 0 ? styles.debtLabel : po.person.balance > 0 ? styles.creditLabel : po.hasUnknownPriceItems ? styles.pendingLabel : styles.settledLabel]}>
-                {po.person.balance < 0
+              <Text style={[styles.balanceLabel, compactMode && styles.textExtraSmall, po.person.balance > 0 ? styles.debtLabel : po.person.balance < 0 ? styles.creditLabel : po.hasUnknownPriceItems ? styles.pendingLabel : styles.settledLabel]}>
+                {po.person.balance > 0
                   ? t('run.debtLabel')
-                  : po.person.balance > 0
+                  : po.person.balance < 0
                     ? t('run.creditLabel')
                     : po.hasUnknownPriceItems
                       ? t('run.pendingLabel')
@@ -882,70 +851,34 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
               )}
             </RNView>
             <RNView style={styles.balanceValueRow}>
-              <Text style={[po.person.balance < 0 ? styles.debt : po.person.balance > 0 ? styles.credit : po.hasUnknownPriceItems ? styles.pending : styles.settled, compactMode && styles.personTotalCompact]}>
+              <Text style={[po.person.balance > 0 ? styles.debt : po.person.balance < 0 ? styles.credit : po.hasUnknownPriceItems ? styles.pending : styles.settled, compactMode && styles.personTotalCompact]}>
                 ${Math.abs(po.person.balance).toFixed(2)}
               </Text>
-              <TouchableOpacity
-                onPress={() => onHistory({ id: po.person.id, name: po.person.name })}
-                style={[styles.historyBtn, compactMode && styles.paddingSmall]}
-              >
-                <FontAwesome name="history" size={compactMode ? 14 : 16} color={ACCENT_GOLD} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TouchableOpacity
+                  onPress={() => onOrdersClick({ id: po.person.id, name: po.person.name })}
+                  style={[styles.historyBtn, compactMode && styles.paddingSmall]}
+                >
+                  <FontAwesome name="list-alt" size={compactMode ? 14 : 16} color={ACCENT_GOLD} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onHistory({ id: po.person.id, name: po.person.name })}
+                  style={[styles.historyBtn, compactMode && styles.paddingSmall]}
+                >
+                  <FontAwesome name="history" size={compactMode ? 14 : 16} color={ACCENT_GOLD} />
+                </TouchableOpacity>
+              </View>
             </RNView>
           </RNView>
 
           <RNView style={styles.buttonGroup}>
-            {po.hasUnpaidItems ? (
-              <RNView style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity
-                  onPress={() => onPayAmount({ id: po.order.id, personId: po.person.id, total: po.totalCost, personName: po.person.name, targetDate: po.order.targetDate })}>
-                  <RNView style={styles.paymentShadow}>
-                    <LinearGradient
-                      colors={METALLIC_BEVEL}
-                      start={{ x: 0.5, y: 0 }}
-                      end={{ x: 0.5, y: 1 }}
-                      style={[styles.paymentBtnOuter, compactMode && { borderRadius: 5 }]}
-                    >
-                      <LinearGradient
-                        colors={LIQUID_GOLD_STOPS}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={[styles.paymentBtnInner, compactMode && styles.compactBtn]}
-                      >
-                        <Text style={[styles.markAllPaidText, compactMode && styles.textExtraSmall]}>{t('run.payAmountTitle')}</Text>
-                      </LinearGradient>
-                    </LinearGradient>
-                  </RNView>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => onMarkPaid(po.order.id, po.person.id)}>
-                  <RNView style={styles.paymentShadow}>
-                    <LinearGradient
-                      colors={METALLIC_BEVEL}
-                      start={{ x: 0.5, y: 0 }}
-                      end={{ x: 0.5, y: 1 }}
-                      style={[styles.paymentBtnOuter, compactMode && { borderRadius: 5 }]}
-                    >
-                      <LinearGradient
-                        colors={LIQUID_GOLD_STOPS}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
-                        style={[styles.paymentBtnInner, compactMode && styles.compactBtn]}
-                      >
-                        <Text style={[styles.markAllPaidText, compactMode && styles.textExtraSmall]}>{t('run.markPaid')}</Text>
-                      </LinearGradient>
-                    </LinearGradient>
-                  </RNView>
-                </TouchableOpacity>
-              </RNView>
-            ) : (
-              <TouchableOpacity
-                style={[styles.markAllUnpaidBtn, compactMode && styles.compactBtn]}
-                onPress={() => onMarkUnpaid(po.order.id, po.person.id)}>
-                <Text style={[styles.markAllUnpaidText, compactMode && styles.textExtraSmall]}>{t('run.revertLastPayment')}</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity onPress={() => onPayAmount({ id: po.order.id, personId: po.person.id, total: po.totalCost, personName: po.person.name, targetDate: po.order.targetDate, currentBalance: po.person.balance })} style={styles.paymentShadow}>
+              <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
+                <LinearGradient colors={LIQUID_GOLD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.paymentBtnInner}>
+                  <Text style={styles.markAllPaidText}>{t('run.receivePaymentTitle')}</Text>
+                </LinearGradient>
+              </LinearGradient>
+            </TouchableOpacity>
           </RNView>
         </RNView>
       </RNView>
@@ -1119,8 +1052,8 @@ const styles = StyleSheet.create({
   deleteOrderBtn: { padding: 4 },
   statusContainer: { height: 20, justifyContent: 'center' },
   statusText: { fontSize: 12, fontWeight: 'bold' },
-  statusUnpaid: { color: '#ffa726' },
-  statusPaid: { color: '#5c8a6a' },
+  statusUnsettled: { color: '#ffa726' },
+  statusSettled: { color: '#5c8a6a' },
   personItems: { marginBottom: 5, marginTop: 5 },
   itemRow2: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   itemInfo: { flex: 1 },
@@ -1168,7 +1101,7 @@ const styles = StyleSheet.create({
     padding: 1.5,
   },
   paymentBtnInner: {
-    paddingVertical: 8,
+    paddingVertical: 5,
     paddingHorizontal: 16,
     borderRadius: 4,
     justifyContent: 'center',

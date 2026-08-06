@@ -39,7 +39,6 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
       itemId: orderItems.itemId,
       quantity: orderItems.quantity,
       unitPrice: orderItems.unitPrice,
-      isPaid: orderItems.isPaid,
       itemName: items.name,
     })
     .from(orderItems)
@@ -54,14 +53,14 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
     const orderList = personOrders.map(order => {
       const itemsForOrder = allOrderItems?.filter(oi => oi.orderId === order.id) || [];
       const totalCost = itemsForOrder.reduce((sum, i) => sum + (i.unitPrice ?? 0) * i.quantity, 0);
-      const isFullyPaid = itemsForOrder.length > 0 && itemsForOrder.every(i => i.isPaid);
+      const isFullySettled = order.isSettled;
       const hasUnknownPrices = itemsForOrder.some(i => i.unitPrice === null);
       
       return {
         ...order,
         items: itemsForOrder,
         totalCost,
-        isFullyPaid,
+        isFullySettled,
         hasUnknownPrices,
       };
     });
@@ -84,7 +83,7 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
         if (sortBy === 'date') {
           comparison = a.targetDate.localeCompare(b.targetDate);
         } else if (sortBy === 'status') {
-          comparison = (a.isFullyPaid ? 1 : 0) - (b.isFullyPaid ? 1 : 0);
+          comparison = (a.isFullySettled ? 1 : 0) - (b.isFullySettled ? 1 : 0);
         } else if (sortBy === 'total') {
           comparison = a.totalCost - b.totalCost;
         } else if (sortBy === 'modified') {
@@ -226,9 +225,9 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
                     )}
                   </View>
                   <View style={styles.orderStatusRow}>
-                    <View style={[styles.statusBadge, { backgroundColor: order.isFullyPaid ? '#00C851' : '#ff4444' }]}>
+                    <View style={[styles.statusBadge, { backgroundColor: order.isFullySettled ? '#8c8c8c' : '#ff4444' }]}>
                       <Text style={styles.statusText}>
-                        {order.isFullyPaid ? t('modals.paid') : t('modals.unpaid')}
+                        {order.isFullySettled ? t('modals.settled') : t('modals.unsettled')}
                       </Text>
                     </View>
                     <Text style={[styles.orderTotal, settings.compactMode && styles.textSmall]}>

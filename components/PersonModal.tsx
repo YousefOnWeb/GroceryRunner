@@ -11,6 +11,7 @@ import { db } from '@/db';
 import { persons } from '@/db/schema';
 import { useTranslation } from '@/utils/i18n';
 import { ACCENT_GOLD } from '@/constants/Colors';
+import SettleUpModal from './SettleUpModal';
 
 interface PersonModalProps {
   visible: boolean;
@@ -48,6 +49,7 @@ export default function PersonModal({
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustNote, setAdjustNote] = useState('');
   const [logVisible, setLogVisible] = useState(false);
+  const [settleVisible, setSettleVisible] = useState(false);
   const [namesCorpus, setNamesCorpus] = useState<string[]>(COMMON_NAMES_CORPUS);
   const { settings } = useSettings();
   const { t } = useTranslation();
@@ -301,14 +303,24 @@ export default function PersonModal({
                   />
                 </>
               )}
-              
-              <TouchableOpacity 
-                style={[styles.logLinkBtn, settings.compactMode && styles.logLinkBtnCompact]} 
-                onPress={() => setLogVisible(true)}
-              >
-                <FontAwesome name="history" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} />
-                <Text style={[styles.logLinkText, settings.compactMode && styles.textSmall]}>{t('modals.viewCreditLog')}</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                <TouchableOpacity 
+                  style={[styles.logLinkBtn, settings.compactMode && styles.logLinkBtnCompact]} 
+                  onPress={() => setLogVisible(true)}
+                >
+                  <FontAwesome name="history" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} />
+                  <Text style={[styles.logLinkText, settings.compactMode && styles.textSmall]}>{t('modals.viewCreditLog')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.logLinkBtn, { backgroundColor: 'rgba(0, 200, 81, 0.1)', borderColor: 'rgba(0, 200, 81, 0.3)' }, settings.compactMode && styles.logLinkBtnCompact]} 
+                  onPress={() => setSettleVisible(true)}
+                >
+                  <FontAwesome name="money" size={settings.compactMode ? 14 : 16} color="#00C851" />
+                  <Text style={[styles.logLinkText, { color: '#00C851' }, settings.compactMode && styles.textSmall]}>
+                    {t('run.receivePaymentTitle')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </>
           )}
 
@@ -339,6 +351,25 @@ export default function PersonModal({
         personId={personId || ''} 
         personName={name} 
         onClose={() => setLogVisible(false)} 
+      />
+      <SettleUpModal
+        visible={settleVisible}
+        personId={personId || ''}
+        personName={name}
+        currentBalance={initialBalance}
+        onClose={() => setSettleVisible(false)}
+        onSubmit={async (amount, note) => {
+          if (!personId) return;
+          try {
+            await api.receivePayment(personId, amount, note);
+            setSettleVisible(false);
+            Alert.alert(t('common.success'), 'Payment received successfully.');
+            onDone();
+          } catch (e) {
+            console.error(e);
+            Alert.alert(t('common.error'), 'Failed to process payment.');
+          }
+        }}
       />
     </Modal>
   );

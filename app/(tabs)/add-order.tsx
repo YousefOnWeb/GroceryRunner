@@ -175,33 +175,7 @@ export default function AddOrderScreen() {
 
   const handleLoadExistingOrder = () => {
     if (!existingOrder) return;
-    
-    if (existingOrder.isPaid) {
-      Alert.alert(
-        t('addOrder.editPaidTitle'),
-        t('addOrder.editPaidMsg'),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          {
-            text: t('addOrder.markUnpaid'),
-            onPress: async () => {
-              try {
-                await api.markOrderUnpaid(existingOrder.id, existingOrder.personId);
-                loadExistingOrder();
-              } catch (e) {
-                console.error(e);
-              }
-            }
-          },
-          {
-            text: t('addOrder.keepPaid'),
-            onPress: () => loadExistingOrder()
-          }
-        ]
-      );
-    } else {
-      loadExistingOrder();
-    }
+    loadExistingOrder();
   };
 
   const loadExistingOrder = () => {

@@ -63,7 +63,8 @@ export default function CreditLogModal({ visible, personId, personName, onClose 
   };
 
   const getAmountColor = (amount: number) => {
-    return amount >= 0 ? '#00C851' : '#ff4444';
+    // Negative or zero means credit/settled (Green). Positive means debt (Red).
+    return amount <= 0 ? '#00C851' : '#ff4444';
   };
 
   return (

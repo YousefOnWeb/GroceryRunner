@@ -12,6 +12,7 @@ import { SettingsProvider } from '@/utils/settings';
 import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import migrations from '../drizzle/migrations';
 import { db } from '../db';
+import { api } from '@/db/api';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -53,7 +54,12 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded && migrationSuccess) {
-      SplashScreen.hideAsync();
+      api.migrateSignConvention().then(() => {
+        SplashScreen.hideAsync();
+      }).catch(e => {
+        console.error('Data migration error:', e);
+        SplashScreen.hideAsync();
+      });
     }
   }, [loaded, migrationSuccess]);
 
