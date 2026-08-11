@@ -407,7 +407,7 @@ export default function AddOrderScreen() {
         ...aliases
       ].join(' ').toLowerCase();
       return searchString.includes(q);
-    });
+    }).slice(0, 10);
   }, [catalog, searchQuery, formMode, itemAliasesList, topItems]);
   
   const exactItemMatch = useMemo(() => {

@@ -12,6 +12,7 @@ import { useTranslation } from '@/utils/i18n';
 import { ACCENT_GOLD, LIGHT_GOLD, METALLIC_BEVEL, LIQUID_GOLD_STOPS } from '@/constants/Colors';
 import { formatDateLabel, formatDateTime } from '@/utils/dates';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // Modals
@@ -32,6 +33,7 @@ export default function UnsettledScreen() {
   const router = useRouter();
   const { settings } = useSettings();
   const { t, isRTL } = useTranslation();
+  const isFocused = useIsFocused();
 
   // State
   const [searchQuery, setSearchQuery] = useState('');
@@ -184,8 +186,15 @@ export default function UnsettledScreen() {
   }, [peopleList]);
 
   // Flatten and group for FlatList data array
-  const flatListData = useMemo(() => {
+  const lastFlatListRef = useRef<any[]>(null);
+  
+  const flatListData = useMemo<any[]>(() => {
     const start = performance.now();
+    
+    if (!isFocused && lastFlatListRef.current) {
+      return lastFlatListRef.current!;
+    }
+    
     const list: any[] = [];
 
     if (groupBy === 'day') {
@@ -261,24 +270,44 @@ export default function UnsettledScreen() {
 
     const end = performance.now();
     perfLog(`[PERF] [flatListData useMemo] grouped list generated in ${(end - start).toFixed(2)}ms (items: ${list.length})`);
+    lastFlatListRef.current = list;
     return list;
-  }, [sortedOrders, groupBy, sortOrder]);
+  }, [sortedOrders, groupBy, sortOrder, isFocused]);
 
   // Order Handlers
   const handleMarkAllPaid = React.useCallback(async (orderId: string, personId: string) => {}, []);
 
   const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {}, []);
 
-  const handleCustomPayment = async (amount: number, note: string, markSettled?: boolean) => { 
+  const handleCustomPayment = async (amount: number, note: string, markSettled?: boolean, markAllPastSettled?: boolean) => { 
     if (!payAmountOrder) return;
     try {
+      console.log('\n==================================================');
+      console.log(`[PAYMENT DEBUG - unsettled] Starting payment flow for ${payAmountOrder.personName}`);
+      console.log(`[PAYMENT DEBUG - unsettled] Amount: ${amount}, Note: ${note}, markSettled: ${markSettled}, markAllPastSettled: ${markAllPastSettled}`);
+      const startTime = performance.now();
+      
+      console.log(`[PAYMENT DEBUG - unsettled] Calling api.receivePayment...`);
+      let stepStart = performance.now();
       await api.receivePayment(payAmountOrder.personId, amount, note);
-      if (markSettled) {
+      console.log(`[PAYMENT DEBUG - unsettled] api.receivePayment completed in ${(performance.now() - stepStart).toFixed(2)}ms`);
+      
+      if (markAllPastSettled) {
+        console.log(`[PAYMENT DEBUG - unsettled] Calling api.markPastOrdersSettled...`);
+        stepStart = performance.now();
+        await api.markPastOrdersSettled(payAmountOrder.personId, payAmountOrder.date);
+        console.log(`[PAYMENT DEBUG - unsettled] api.markPastOrdersSettled completed in ${(performance.now() - stepStart).toFixed(2)}ms`);
+      } else if (markSettled) {
+        console.log(`[PAYMENT DEBUG - unsettled] Calling api.markOrderSettled...`);
+        stepStart = performance.now();
         await api.markOrderSettled(payAmountOrder.id, true);
+        console.log(`[PAYMENT DEBUG - unsettled] api.markOrderSettled completed in ${(performance.now() - stepStart).toFixed(2)}ms`);
       }
       setPayAmountOrder(null);
+      console.log(`[PAYMENT DEBUG - unsettled] Total payment flow completed in ${(performance.now() - startTime).toFixed(2)}ms`);
+      console.log('==================================================\n');
     } catch (e) {
-      console.error(e);
+      console.error('[PAYMENT DEBUG ERROR - unsettled]', e);
       Alert.alert(t('common.error'), 'Failed to process payment.');
     }
   };
@@ -885,7 +914,12 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
     </RNView>
   );
 }, (prev, next) => {
-  return prev.po === next.po &&
+  return prev.po.order.id === next.po.order.id &&
+         prev.po.person.balance === next.po.person.balance &&
+         prev.po.unpaidCost === next.po.unpaidCost &&
+         prev.po.totalCost === next.po.totalCost &&
+         prev.po.hasUnknownPriceItems === next.po.hasUnknownPriceItems &&
+         prev.po.items.length === next.po.items.length &&
          prev.compactMode === next.compactMode &&
          prev.isRTL === next.isRTL &&
          prev.showDate === next.showDate;

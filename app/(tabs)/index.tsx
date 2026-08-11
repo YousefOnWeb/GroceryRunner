@@ -21,6 +21,7 @@ import { eq } from 'drizzle-orm';
 import { ACCENT_GOLD, GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, METALLIC_BEVEL } from '@/constants/Colors';
 // -----------------------
 import { useFocusEffect } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Alert, AppState, I18nManager, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
 
@@ -160,14 +161,38 @@ export default function TheRunScreen() {
   const { data: people } = useLiveQuery(db.select().from(persons));
   const { data: allTasks } = useLiveQuery(db.select().from(tasks));
 
-  const { aggregatedItems, peopleOrders, listTotal, generalTasks, physicalChecklist } = useMemo(() => {
+  const isFocused = useIsFocused();
+  const lastAggregatedRef = useRef<{
+    aggregatedItems: Record<string, Record<string, any[]>>;
+    peopleOrders: any[];
+    listTotal: number;
+    generalTasks: any[];
+    physicalChecklist: any[];
+  } | null>(null);
+
+  type AggregatedItemsType = Record<string, Record<string, any[]>>;
+  type PeopleOrdersType = { location: string; orders: any[] }[];
+
+  const { aggregatedItems, peopleOrders, listTotal, generalTasks, physicalChecklist } = useMemo<{
+    aggregatedItems: AggregatedItemsType;
+    peopleOrders: PeopleOrdersType;
+    listTotal: number;
+    generalTasks: any[];
+    physicalChecklist: any[];
+  }>(() => {
+    if (!isFocused && lastAggregatedRef.current) {
+      return lastAggregatedRef.current!;
+    }
+    
     const memoStart = performance.now();
     const agg: Record<string, { item: any; totalQuantity: number; totalCost: number }> = {};
     const pOrders: Record<string, { person: any; order: any; items: any[]; tasks: any[]; totalCost: number; unpaidCost: number; hasUnpaidItems: boolean; hasUnknownPriceItems: boolean; deliveryPlace: string | null }> = {};
 
     if (!allOrders || !allOrderItems || !catalog || !people || !allTasks) {
       perfLog(`[PERF] [useMemo] DB tables not fully loaded yet inside Render #${renderCountRef.current}`);
-      return { aggregatedItems: {}, peopleOrders: [], listTotal: 0, generalTasks: [], physicalChecklist: [] };
+      const fallback = { aggregatedItems: {}, peopleOrders: [], listTotal: 0, generalTasks: [], physicalChecklist: [] };
+      lastAggregatedRef.current = fallback;
+      return fallback;
     }
 
     const targetDateDb = getLocalDateString(targetDate);
@@ -332,7 +357,7 @@ export default function TheRunScreen() {
     const memoDuration = memoEnd - memoStart;
     perfLog(`[PERF] [useMemo End] Processing completed in ${memoDuration.toFixed(2)}ms (Render #${renderCountRef.current}).`);
 
-    return {
+    const result = {
       aggregatedItems: groupedList,
       peopleOrders: sortedLocations.map(loc => ({
         location: loc,
@@ -342,9 +367,17 @@ export default function TheRunScreen() {
       generalTasks,
       physicalChecklist,
     };
-  }, [allOrders, allOrderItems, catalog, people, allTasks, targetDate, settings.groupByFreshness, settings.locationOrder, settings.sourceOrder]);
+    lastAggregatedRef.current = result;
+    return result;
+  }, [allOrders, allOrderItems, catalog, people, allTasks, targetDate, settings.groupByFreshness, settings.locationOrder, settings.sourceOrder, isFocused]);
 
-  const flatListData = useMemo(() => {
+  const lastFlatListRef = useRef<any[]>(null);
+  
+  const flatListData = useMemo<any[]>(() => {
+    if (!isFocused && lastFlatListRef.current) {
+      return lastFlatListRef.current!;
+    }
+    
     needsYRecompute.current = true;
     const listStart = performance.now();
     const list: any[] = [];
@@ -430,6 +463,7 @@ export default function TheRunScreen() {
 
     const listEnd = performance.now();
     perfLog(`[PERF] [flatListData useMemo] Completed in ${(listEnd - listStart).toFixed(2)}ms, generated ${list.length} items.`);
+    lastFlatListRef.current = list;
     return list;
   }, [
     listTotal,
@@ -438,7 +472,8 @@ export default function TheRunScreen() {
     peopleOrders,
     collapsedLocations,
     collapsedSources,
-        selectedOrders,
+    isFocused,
+    selectedOrders,
     selectionMode,
     checkedItems,
     optimisticTasks,
@@ -845,16 +880,35 @@ export default function TheRunScreen() {
 
   const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {}, []);
 
-  const handleCustomPayment = async (amount: number, note: string, markSettled?: boolean) => {
+  const handleCustomPayment = async (amount: number, note: string, markSettled?: boolean, markAllPastSettled?: boolean) => {
     if (!payAmountOrder) return;
     try {
+      console.log('\n==================================================');
+      console.log(`[PAYMENT DEBUG - index] Starting payment flow for ${payAmountOrder.personName}`);
+      console.log(`[PAYMENT DEBUG - index] Amount: ${amount}, Note: ${note}, markSettled: ${markSettled}, markAllPastSettled: ${markAllPastSettled}`);
+      const startTime = performance.now();
+      
+      console.log(`[PAYMENT DEBUG - index] Calling api.receivePayment...`);
+      let stepStart = performance.now();
       await api.receivePayment(payAmountOrder.personId, amount, note);
-      if (markSettled) {
+      console.log(`[PAYMENT DEBUG - index] api.receivePayment completed in ${(performance.now() - stepStart).toFixed(2)}ms`);
+      
+      if (markAllPastSettled) {
+        console.log(`[PAYMENT DEBUG - index] Calling api.markPastOrdersSettled...`);
+        stepStart = performance.now();
+        await api.markPastOrdersSettled(payAmountOrder.personId, payAmountOrder.date);
+        console.log(`[PAYMENT DEBUG - index] api.markPastOrdersSettled completed in ${(performance.now() - stepStart).toFixed(2)}ms`);
+      } else if (markSettled) {
+        console.log(`[PAYMENT DEBUG - index] Calling api.markOrderSettled...`);
+        stepStart = performance.now();
         await api.markOrderSettled(payAmountOrder.id, true);
+        console.log(`[PAYMENT DEBUG - index] api.markOrderSettled completed in ${(performance.now() - stepStart).toFixed(2)}ms`);
       }
       setPayAmountOrder(null);
+      console.log(`[PAYMENT DEBUG - index] Total payment flow completed in ${(performance.now() - startTime).toFixed(2)}ms`);
+      console.log('==================================================\n');
     } catch (e) {
-      console.error(e);
+      console.error('[PAYMENT DEBUG ERROR - index]', e);
       Alert.alert(t('common.error'), 'Failed to process payment.');
     }
   };
@@ -887,7 +941,7 @@ export default function TheRunScreen() {
       group.orders.forEach(po => {
         text += `  👤 ${po.person.name}:\n`;
         if (po.items.length > 0) {
-          po.items.forEach(i => {
+          po.items.forEach((i: any) => {
             const cost = i.unitPrice !== null ? `$${(i.unitPrice * i.quantity).toFixed(2)}` : 'TBD';
             text += `    • ${i.quantity}x ${i.itemDef?.name} - ${cost}\n`;
           });
@@ -2013,7 +2067,12 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
     </View>
   );
 }, (prev, next) => {
-  return prev.po === next.po &&
+  return prev.po.order.id === next.po.order.id &&
+         prev.po.person.balance === next.po.person.balance &&
+         prev.po.unpaidCost === next.po.unpaidCost &&
+         prev.po.totalCost === next.po.totalCost &&
+         prev.po.hasUnknownPriceItems === next.po.hasUnknownPriceItems &&
+         prev.po.items.length === next.po.items.length &&
          prev.selectionMode === next.selectionMode &&
          prev.isSelected === next.isSelected &&
          prev.compactMode === next.compactMode &&

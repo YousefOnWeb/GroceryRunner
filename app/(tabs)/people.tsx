@@ -10,8 +10,9 @@ import { orderItems, orders, personAliases, persons, transactions } from '@/db/s
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { and, eq, sql } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList, Pressable, Animated } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import { useSettings } from '@/utils/settings';
 import { useTranslation } from '@/utils/i18n';
@@ -79,20 +80,30 @@ export default function PeopleScreen() {
     return list;
   }, [peopleList, sortBy, sortOrder]);
 
-  const filteredPeople = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return sortedPeople;
+  const isFocused = useIsFocused();
+  const lastFilteredRef = useRef<any[]>(null);
 
-    return sortedPeople.filter(p => {
-      const aliases = allAliases?.filter(a => a.personId === p.id).map(a => a.alias) || [];
-      const searchString = [
-        p.name,
-        p.typicalPlace,
-        ...aliases
-      ].join(' ').toLowerCase();
-      return searchString.includes(q);
-    });
-  }, [sortedPeople, allAliases, searchQuery]);
+  const filteredPeople = useMemo<any[]>(() => {
+    if (!isFocused && lastFilteredRef.current) {
+      return lastFilteredRef.current!;
+    }
+    const q = searchQuery.toLowerCase().trim();
+    let result = sortedPeople;
+    
+    if (q) {
+      result = sortedPeople.filter(p => {
+        const aliases = allAliases?.filter(a => a.personId === p.id).map(a => a.alias) || [];
+        const searchString = [
+          p.name,
+          p.typicalPlace,
+          ...aliases
+        ].join(' ').toLowerCase();
+        return searchString.includes(q);
+      });
+    }
+    lastFilteredRef.current = result;
+    return result;
+  }, [sortedPeople, allAliases, searchQuery, isFocused]);
 
   const { data: unpaidUnknownPriceItems } = useLiveQuery(
     db.select({ personId: orders.personId })

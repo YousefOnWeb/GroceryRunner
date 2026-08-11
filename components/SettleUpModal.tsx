@@ -13,7 +13,7 @@ interface SettleUpModalProps {
   currentBalance: number;
   orderId?: string;
   onClose: () => void;
-  onSubmit: (amount: number, note: string, markSettled?: boolean) => void;
+  onSubmit: (amount: number, note: string, markSettled?: boolean, markAllPastSettled?: boolean) => void;
 }
 
 export default function SettleUpModal({ visible, personId, personName, currentBalance, orderId, onClose, onSubmit }: SettleUpModalProps) {
@@ -24,13 +24,17 @@ export default function SettleUpModal({ visible, personId, personName, currentBa
   const defaultAmount = currentBalance > 0 ? currentBalance : 0;
   const [amountStr, setAmountStr] = useState(defaultAmount.toFixed(2));
   const [note, setNote] = useState('');
-  const [markSettled, setMarkSettled] = useState(true);
+  const [markSettled, setMarkSettled] = useState(false);
+  const [markAllPastSettled, setMarkAllPastSettled] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     if (visible) {
       setAmountStr(currentBalance > 0 ? currentBalance.toFixed(2) : '');
       setNote('');
-      setMarkSettled(true);
+      setMarkSettled(false);
+      setMarkAllPastSettled(false);
+      setErrorMsg('');
     }
   }, [visible, currentBalance]);
 
@@ -73,9 +77,13 @@ export default function SettleUpModal({ visible, personId, personName, currentBa
   };
 
   const handleSave = () => {
-    if (parsedAmount > 0 && note.trim().length > 0) {
-      onSubmit(parsedAmount, note.trim(), orderId ? markSettled : undefined);
+    if (parsedAmount <= 0) return;
+    if (note.trim().length === 0) {
+      setErrorMsg(t('run.noteMandatory') || (isRTL ? 'الملاحظة مطلوبة' : 'Note/Description is mandatory'));
+      return;
     }
+    setErrorMsg('');
+    onSubmit(parsedAmount, note.trim(), orderId ? markSettled : undefined, orderId ? markAllPastSettled : undefined);
   };
 
   return (
@@ -114,24 +122,51 @@ export default function SettleUpModal({ visible, personId, personName, currentBa
             <TextInput
               style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }, settings.compactMode && styles.inputCompact]}
               value={note}
-              onChangeText={setNote}
+              onChangeText={(t) => {
+                setNote(t);
+                if (errorMsg) setErrorMsg('');
+              }}
               placeholder={t('run.receivePaymentNote')}
               placeholderTextColor="#888"
               selectionColor={ACCENT_GOLD}
             />
           </View>
+          {!!errorMsg && (
+            <Text style={{ color: '#ff4444', fontSize: 12, marginTop: -10, marginBottom: 10, textAlign: isRTL ? 'right' : 'left' }}>
+              {errorMsg}
+            </Text>
+          )}
           
           {orderId && (
-            <TouchableOpacity 
-              style={styles.checkboxContainer} 
-              onPress={() => setMarkSettled(!markSettled)}
-              activeOpacity={0.7}
-            >
-              <FontAwesome name={markSettled ? "check-square" : "square-o"} size={20} color={markSettled ? "#00C851" : "#888"} />
-              <Text style={[styles.checkboxLabel, { textAlign: isRTL ? 'right' : 'left' }, settings.compactMode && styles.textSmall]}>
-                {t('run.markOrderSettled')}
-              </Text>
-            </TouchableOpacity>
+            <View style={{ marginTop: 5 }}>
+              <TouchableOpacity 
+                style={[styles.checkboxContainer, markAllPastSettled && { opacity: 0.5 }]} 
+                onPress={() => {
+                  if (markAllPastSettled) return;
+                  setMarkSettled(!markSettled);
+                }}
+                activeOpacity={markAllPastSettled ? 1 : 0.7}
+              >
+                <FontAwesome name={markSettled ? "check-square" : "square-o"} size={20} color={markSettled ? ACCENT_GOLD : "#888"} />
+                <Text style={[styles.checkboxLabel, { textAlign: isRTL ? 'right' : 'left' }, settings.compactMode && styles.textSmall]}>
+                  {t('run.markOrderSettled')}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.checkboxContainer, { marginTop: 8 }, markSettled && { opacity: 0.5 }]} 
+                onPress={() => {
+                  if (markSettled) return;
+                  setMarkAllPastSettled(!markAllPastSettled);
+                }}
+                activeOpacity={markSettled ? 1 : 0.7}
+              >
+                <FontAwesome name={markAllPastSettled ? "check-square" : "square-o"} size={20} color={markAllPastSettled ? ACCENT_GOLD : "#888"} />
+                <Text style={[styles.checkboxLabel, { textAlign: isRTL ? 'right' : 'left' }, settings.compactMode && styles.textSmall]}>
+                  {t('run.markAllPastSettled') || (isRTL ? 'تحديد هذا الطلب والطلبات السابقة كمسواة' : 'Mark this and all past orders as settled')}
+                </Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           {renderConfirmation()}
@@ -141,9 +176,9 @@ export default function SettleUpModal({ visible, personId, personName, currentBa
               <Text style={styles.cancelText}>{tCancel}</Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              style={[styles.saveBtn, (parsedAmount <= 0 || !note.trim()) && styles.saveBtnDisabled]} 
+              style={[styles.saveBtn, (parsedAmount <= 0) && styles.saveBtnDisabled]} 
               onPress={handleSave}
-              disabled={parsedAmount <= 0 || !note.trim()}
+              disabled={parsedAmount <= 0}
             >
               <Text style={styles.saveText}>{tSave}</Text>
             </TouchableOpacity>
@@ -254,10 +289,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   saveBtn: {
-    backgroundColor: '#00C851',
-    paddingVertical: 10,
+    backgroundColor: ACCENT_GOLD,
+    paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
+    flex: 1,
+    alignItems: 'center',
+    marginLeft: 10,
   },
   saveBtnDisabled: {
     backgroundColor: '#333',

@@ -135,7 +135,9 @@ export const translations = {
       receivePaymentTitle: 'Receive Payment',
       paymentAmountLabel: 'Amount Received',
       markOrderSettled: 'Mark order as settled',
+      markAllPastSettled: 'Mark this and all past orders as settled',
       receivePaymentNote: 'Note / Description',
+      noteMandatory: 'Note/Description is mandatory',
     },
     addOrder: {
       createTitle: 'Create New Order',
@@ -480,13 +482,13 @@ export const translations = {
       exitSearch: 'الخروج من وضع البحث',
       shoppingList: 'قائمة التسوق',
       total: 'المجموع:',
-      deliveries: 'التوصيلات والمسوىات',
+      deliveries: 'التوصيلات والمقابلات',
       searchPerson: 'ابحث عن شخص أو مكان...',
-      unsettled: 'غير مسوى',
+      unsettled: 'لم تتم التسوية',
       markSettled: 'تحديد كمسوى',
       revertLastPayment: 'إلغاء آخر دفعة',
-      statusUnsettled: 'غير مسوى',
-      statusSettled: 'مسوى',
+      statusUnsettled: 'لم تتم التسوية',
+      statusSettled: 'تمت التسوية',
       statusAwaitingPrices: 'في انتظار الأسعار النهائية',
       noDeliveries: 'لا توجد توصيلات لهذا اليوم. اذهب إلى إضافة طلب للبدء.',
       noOrdersFound: 'لم يتم العثور على طلبات تطابق "{query}"',
@@ -512,7 +514,9 @@ export const translations = {
       receivePaymentTitle: 'استلام دفعة',
       paymentAmountLabel: 'المبلغ المستلم',
       markOrderSettled: 'تحديد الطلب كمسوى',
+      markAllPastSettled: 'تحديد هذا الطلب والطلبات السابقة كمسواة',
       receivePaymentNote: 'ملاحظة / وصف',
+      noteMandatory: 'الملاحظة مطلوبة',
     },
     addOrder: {
       createTitle: 'إنشاء طلب جديد',
@@ -747,8 +751,8 @@ export const translations = {
       sortStatus: 'الحالة',
       sortTotal: 'المجموع',
       sortModified: 'آخر تعديل',
-      settled: 'مسوى',
-      unsettled: 'غير مسوى',
+      settled: 'تمت التسوية',
+      unsettled: 'لم تتم التسوية',
       created: 'تم الإنشاء',
       modified: 'تم التعديل',
       neverModified: 'لم يتم التعديل',
@@ -760,7 +764,7 @@ export const translations = {
 export function useTranslation() {
   const { settings } = useSettings();
   const lang = settings.language || 'en';
-  
+
   const t = (path: string, params?: Record<string, string | number>) => {
     const keys = path.split('.');
     let current: any = translations[lang];
@@ -777,7 +781,7 @@ export function useTranslation() {
       }
       current = current[key];
     }
-    
+
     if (typeof current === 'string' && params) {
       let result = current;
       for (const [key, value] of Object.entries(params)) {
@@ -785,7 +789,7 @@ export function useTranslation() {
       }
       return result;
     }
-    
+
     return current;
   };
 

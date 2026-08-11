@@ -82,31 +82,36 @@ export default function CreditLogModal({ visible, personId, personName, onClose 
             <ActivityIndicator size="large" color={ACCENT_GOLD} style={{ margin: 20 }} />
           ) : (
             <ScrollView style={styles.logList} contentContainerStyle={styles.logListContent}>
-              {logs.map((log) => (
-                <View key={log.id} style={[styles.logItem, settings.compactMode && styles.logItemCompact]}>
-                  <View style={styles.logTop}>
-                    <Text style={[styles.logDate, settings.compactMode && styles.textExtraSmall]}>
-                      {formatDateTime(log.date)}
-                    </Text>
-                    <Text style={[styles.logAmount, { color: getAmountColor(log.amount) }, settings.compactMode && styles.textSmall]}>
-                      {log.amount >= 0 ? '+' : ''}{log.amount.toFixed(2)}
-                    </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Text style={[styles.logNote, settings.compactMode && styles.textSmall, { flex: 1, marginEnd: 10 }]}>{log.note || log.type}</Text>
-                    
-                    <View style={styles.balanceBadge}>
-                      <Text style={[styles.balanceText, { color: getAmountColor(log.balanceBefore) }]}>
-                        {log.balanceBefore >= 0 ? '+' : ''}{log.balanceBefore.toFixed(2)}
+              {logs.map((log) => {
+                const dispAmount = -log.amount;
+                const dispBalBefore = -log.balanceBefore;
+                const dispBalAfter = -log.balanceAfter;
+                return (
+                  <View key={log.id} style={[styles.logItem, settings.compactMode && styles.logItemCompact]}>
+                    <View style={styles.logTop}>
+                      <Text style={[styles.logDate, settings.compactMode && styles.textExtraSmall]}>
+                        {formatDateTime(log.date)}
                       </Text>
-                      <FontAwesome name={isRTL ? "long-arrow-left" : "long-arrow-right"} size={10} color="#888" style={{ marginHorizontal: 6 }} />
-                      <Text style={[styles.balanceText, { color: getAmountColor(log.balanceAfter) }]}>
-                        {log.balanceAfter >= 0 ? '+' : ''}{log.balanceAfter.toFixed(2)}
+                      <Text style={[styles.logAmount, { color: getAmountColor(log.amount) }, settings.compactMode && styles.textSmall]}>
+                        {dispAmount >= 0 ? '+' : ''}{dispAmount.toFixed(2)}
                       </Text>
                     </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Text style={[styles.logNote, settings.compactMode && styles.textSmall, { flex: 1, marginEnd: 10 }]}>{log.note || log.type}</Text>
+                      
+                      <View style={styles.balanceBadge}>
+                        <Text style={[styles.balanceText, { color: getAmountColor(log.balanceBefore) }]}>
+                          {dispBalBefore >= 0 ? '+' : ''}{dispBalBefore.toFixed(2)}
+                        </Text>
+                        <FontAwesome name={isRTL ? "long-arrow-left" : "long-arrow-right"} size={10} color="#888" style={{ marginHorizontal: 6 }} />
+                        <Text style={[styles.balanceText, { color: getAmountColor(log.balanceAfter) }]}>
+                          {dispBalAfter >= 0 ? '+' : ''}{dispBalAfter.toFixed(2)}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
               {logs.length === 0 && (
                 <Text style={styles.emptyText}>{t('modals.noTransactions')}</Text>
               )}

@@ -1,4 +1,4 @@
-import { and, eq, inArray, like, sql } from 'drizzle-orm';
+import { and, eq, inArray, like, sql, lte } from 'drizzle-orm';
 import * as crypto from 'expo-crypto';
 import { db } from './index';
 import { items, orderItems, orders, personAliases, persons, transactions, itemAliases, placeAliases, sourceAliases, tasks } from './schema';
@@ -231,6 +231,11 @@ export const api = {
           note: `Order for ${targetDate}`,
         });
       }
+
+      const personData = await tx.select({ balance: persons.balance }).from(persons).where(eq(persons.id, personId));
+      if (personData.length > 0 && personData[0].balance <= 0) {
+        await tx.update(orders).set({ isSettled: true }).where(eq(orders.id, orderId));
+      }
     });
   },
 
@@ -305,6 +310,11 @@ export const api = {
           .set({ lastOrderedAt: now })
           .where(inArray(items.id, itemIds));
       }
+
+      const personData = await tx.select({ balance: persons.balance }).from(persons).where(eq(persons.id, personId));
+      if (personData.length > 0 && personData[0].balance <= 0) {
+        await tx.update(orders).set({ isSettled: true }).where(eq(orders.id, orderId));
+      }
     });
   },
 
@@ -313,7 +323,12 @@ export const api = {
   receivePayment: async (personId: string, amount: number, note: string) => {
     if (amount <= 0) return;
     
+    console.log(`[PAYMENT DEBUG - DB] receivePayment started for personId: ${personId}, amount: ${amount}`);
+    const startTx = performance.now();
     await db.transaction(async (tx) => {
+      console.log(`[PAYMENT DEBUG - DB] Transaction started`);
+      
+      let stepStart = performance.now();
       // 1. Record the transaction (Negative amount decreases debt)
       await tx.insert(transactions).values({
         id: generateId(),
@@ -323,17 +338,16 @@ export const api = {
         type: 'PaymentReceived',
         note: note.trim(),
       });
-
+      console.log(`[PAYMENT DEBUG - DB] Inserted transaction in ${(performance.now() - stepStart).toFixed(2)}ms`);
+      
+      stepStart = performance.now();
       // 2. Update the balance
       await tx.update(persons)
         .set({ balance: sql`${persons.balance} - ${amount}` })
         .where(eq(persons.id, personId));
-
-      // 3. Automatically mark all previous orders as settled to clean up the 'Unsettled' view
-      await tx.update(orders)
-        .set({ isSettled: true, modifiedAt: new Date().toISOString() })
-        .where(eq(orders.personId, personId));
+      console.log(`[PAYMENT DEBUG - DB] Updated person balance in ${(performance.now() - stepStart).toFixed(2)}ms`);
     });
+    console.log(`[PAYMENT DEBUG - DB] Transaction finished in ${(performance.now() - startTx).toFixed(2)}ms`);
   },
 
   changeBalance: async (personId: string, amount: number, note: string) => {
@@ -939,6 +953,15 @@ export const api = {
     return await db.update(orders)
       .set({ isSettled, modifiedAt: new Date().toISOString() })
       .where(eq(orders.id, orderId));
+  },
+
+  markPastOrdersSettled: async (personId: string, upToDate: string) => {
+    return await db.update(orders)
+      .set({ isSettled: true, modifiedAt: new Date().toISOString() })
+      .where(and(
+        eq(orders.personId, personId),
+        lte(orders.targetDate, upToDate)
+      ));
   },
 
   deleteOrder: async (orderId: string, revertCash: boolean = false) => {
