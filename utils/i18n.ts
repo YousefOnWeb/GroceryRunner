@@ -92,6 +92,8 @@ export const translations = {
       today: 'Today',
       tomorrow: 'Tomorrow',
       invalidAmount: 'Please enter a valid number.',
+      debtSuffix: '(Debt)',
+      creditSuffix: '(Credit)',
     },
     run: {
       runLabel: 'Run:',
@@ -471,6 +473,8 @@ export const translations = {
       today: 'اليوم',
       tomorrow: 'غداً',
       invalidAmount: 'يرجى إدخال رقم صحيح.',
+      debtSuffix: '(دين)',
+      creditSuffix: '(رصيد)',
     },
     run: {
       runLabel: 'القائمة:',

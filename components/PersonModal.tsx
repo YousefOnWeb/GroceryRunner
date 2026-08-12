@@ -268,7 +268,7 @@ export default function PersonModal({
               <View style={styles.divider} />
               <Text style={styles.label}>{t('modals.adjustCredit')}</Text>
               <Text style={styles.hint}>
-                {t('modals.currentBalance', { balance: initialBalance.toFixed(2) })}
+                {initialBalance === 0 ? t('modals.currentBalance', { balance: '$0.00' }) : (initialBalance < 0 ? t('people.yourMoneyWithThem', { amount: Math.abs(initialBalance).toFixed(2) }) : t('people.theirMoneyWithYou', { amount: Math.abs(initialBalance).toFixed(2) }))}
               </Text>
               <View style={styles.adjustRow}>
                 <TouchableOpacity

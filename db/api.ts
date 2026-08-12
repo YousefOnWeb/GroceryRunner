@@ -219,13 +219,13 @@ export const api = {
 
       if (totalCost > 0) {
         await tx.update(persons)
-          .set({ balance: sql`${persons.balance} + ${totalCost}` })
+          .set({ balance: sql`${persons.balance} - ${totalCost}` })
           .where(eq(persons.id, personId));
 
         await tx.insert(transactions).values({
           id: generateId(),
           personId,
-          amount: totalCost,
+          amount: -totalCost,
           date: new Date().toISOString(),
           type: 'OrderCost',
           note: `Order for ${targetDate}`,
@@ -233,7 +233,7 @@ export const api = {
       }
 
       const personData = await tx.select({ balance: persons.balance }).from(persons).where(eq(persons.id, personId));
-      if (personData.length > 0 && personData[0].balance <= 0) {
+      if (personData.length > 0 && personData[0].balance >= 0) {
         await tx.update(orders).set({ isSettled: true }).where(eq(orders.id, orderId));
       }
     });
@@ -265,7 +265,7 @@ export const api = {
     await db.transaction(async (tx) => {
       if (oldTotalCost > 0) {
         await tx.update(persons)
-          .set({ balance: sql`${persons.balance} - ${oldTotalCost}` })
+          .set({ balance: sql`${persons.balance} + ${oldTotalCost}` })
           .where(eq(persons.id, personId));
       }
 
@@ -276,7 +276,7 @@ export const api = {
 
       if (newTotalCost > 0) {
         await tx.update(persons)
-          .set({ balance: sql`${persons.balance} + ${newTotalCost}` })
+          .set({ balance: sql`${persons.balance} - ${newTotalCost}` })
           .where(eq(persons.id, personId));
       }
 
@@ -290,7 +290,7 @@ export const api = {
         await tx.insert(transactions).values({
           id: generateId(),
           personId,
-          amount: newTotalCost,
+          amount: -newTotalCost,
           date: new Date().toISOString(),
           type: 'OrderCost',
           note: `Order for ${targetDate}`,
@@ -312,7 +312,7 @@ export const api = {
       }
 
       const personData = await tx.select({ balance: persons.balance }).from(persons).where(eq(persons.id, personId));
-      if (personData.length > 0 && personData[0].balance <= 0) {
+      if (personData.length > 0 && personData[0].balance >= 0) {
         await tx.update(orders).set({ isSettled: true }).where(eq(orders.id, orderId));
       }
     });
@@ -333,7 +333,7 @@ export const api = {
       await tx.insert(transactions).values({
         id: generateId(),
         personId,
-        amount: -amount,
+        amount: amount,
         date: new Date().toISOString(),
         type: 'PaymentReceived',
         note: note.trim(),
@@ -343,7 +343,7 @@ export const api = {
       stepStart = performance.now();
       // 2. Update the balance
       await tx.update(persons)
-        .set({ balance: sql`${persons.balance} - ${amount}` })
+        .set({ balance: sql`${persons.balance} + ${amount}` })
         .where(eq(persons.id, personId));
       console.log(`[PAYMENT DEBUG - DB] Updated person balance in ${(performance.now() - stepStart).toFixed(2)}ms`);
     });
@@ -429,13 +429,13 @@ export const api = {
                 // The person now owes this money
                 const addedDebt = newPrice * item.quantity;
                 await tx.update(persons)
-                  .set({ balance: sql`${persons.balance} + ${addedDebt}` })
+                  .set({ balance: sql`${persons.balance} - ${addedDebt}` })
                   .where(eq(persons.id, item.personId));
 
                 await tx.insert(transactions).values({
                   id: generateId(),
                   personId: item.personId,
-                  amount: addedDebt,
+                  amount: -addedDebt,
                   date: new Date().toISOString(),
                   type: 'OrderCost',
                   note: `Price finalized for ${itemName}`,
@@ -452,13 +452,13 @@ export const api = {
                   .where(eq(orderItems.id, item.oiId));
 
                 await tx.update(persons)
-                  .set({ balance: sql`${persons.balance} + ${diff}` })
+                  .set({ balance: sql`${persons.balance} - ${diff}` })
                   .where(eq(persons.id, item.personId));
 
                 await tx.insert(transactions).values({
                   id: generateId(),
                   personId: item.personId,
-                  amount: diff,
+                  amount: -diff,
                   date: new Date().toISOString(),
                   type: 'ManualAdjustment',
                   note: `Price correction for ${itemName}: $${effectiveOldPrice} -> $${newPrice}`,
@@ -494,13 +494,13 @@ export const api = {
 
             const addedDebt = newPrice * item.quantity;
             await tx.update(persons)
-              .set({ balance: sql`${persons.balance} + ${addedDebt}` })
+              .set({ balance: sql`${persons.balance} - ${addedDebt}` })
               .where(eq(persons.id, item.personId));
 
             await tx.insert(transactions).values({
               id: generateId(),
               personId: item.personId,
-              amount: addedDebt,
+              amount: -addedDebt,
               date: new Date().toISOString(),
               type: 'OrderCost',
               note: `Price finalized for ${itemName}`,

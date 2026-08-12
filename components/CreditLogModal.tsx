@@ -63,8 +63,8 @@ export default function CreditLogModal({ visible, personId, personName, onClose 
   };
 
   const getAmountColor = (amount: number) => {
-    // Negative or zero means credit/settled (Green). Positive means debt (Red).
-    return amount <= 0 ? '#00C851' : '#ff4444';
+    // Negative means debt (Red). Positive means credit/settled (Green).
+    return amount >= 0 ? '#00C851' : '#ff4444';
   };
 
   return (
@@ -83,9 +83,6 @@ export default function CreditLogModal({ visible, personId, personName, onClose 
           ) : (
             <ScrollView style={styles.logList} contentContainerStyle={styles.logListContent}>
               {logs.map((log) => {
-                const dispAmount = -log.amount;
-                const dispBalBefore = -log.balanceBefore;
-                const dispBalAfter = -log.balanceAfter;
                 return (
                   <View key={log.id} style={[styles.logItem, settings.compactMode && styles.logItemCompact]}>
                     <View style={styles.logTop}>
@@ -93,7 +90,7 @@ export default function CreditLogModal({ visible, personId, personName, onClose 
                         {formatDateTime(log.date)}
                       </Text>
                       <Text style={[styles.logAmount, { color: getAmountColor(log.amount) }, settings.compactMode && styles.textSmall]}>
-                        {dispAmount >= 0 ? '+' : ''}{dispAmount.toFixed(2)}
+                        {log.amount > 0 ? '+' : (log.amount < 0 ? '-' : '')}${Math.abs(log.amount).toFixed(2)}
                       </Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -101,11 +98,11 @@ export default function CreditLogModal({ visible, personId, personName, onClose 
                       
                       <View style={styles.balanceBadge}>
                         <Text style={[styles.balanceText, { color: getAmountColor(log.balanceBefore) }]}>
-                          {dispBalBefore >= 0 ? '+' : ''}{dispBalBefore.toFixed(2)}
+                          ${Math.abs(log.balanceBefore).toFixed(2)} {log.balanceBefore < 0 ? t('common.debtSuffix') : (log.balanceBefore > 0 ? t('common.creditSuffix') : '')}
                         </Text>
                         <FontAwesome name={isRTL ? "long-arrow-left" : "long-arrow-right"} size={10} color="#888" style={{ marginHorizontal: 6 }} />
                         <Text style={[styles.balanceText, { color: getAmountColor(log.balanceAfter) }]}>
-                          {dispBalAfter >= 0 ? '+' : ''}{dispBalAfter.toFixed(2)}
+                          ${Math.abs(log.balanceAfter).toFixed(2)} {log.balanceAfter < 0 ? t('common.debtSuffix') : (log.balanceAfter > 0 ? t('common.creditSuffix') : '')}
                         </Text>
                       </View>
                     </View>

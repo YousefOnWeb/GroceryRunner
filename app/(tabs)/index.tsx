@@ -2011,14 +2011,14 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
         <View style={[
           styles.personFooter,
           compactMode && styles.personFooterCompact,
-          po.person.balance > 0 ? styles.footerDebt : po.person.balance < 0 ? styles.footerCredit : null
+          po.person.balance < 0 ? styles.footerDebt : po.person.balance > 0 ? styles.footerCredit : null
         ]}>
           <View>
             <View style={styles.balanceHeaderRow}>
-              <Text style={[styles.balanceLabel, compactMode && styles.textExtraSmall, po.person.balance > 0 ? styles.debtLabel : po.person.balance < 0 ? styles.creditLabel : po.hasUnknownPriceItems ? styles.pendingLabel : styles.settledLabel]}>
-                {po.person.balance > 0
+              <Text style={[styles.balanceLabel, compactMode && styles.textExtraSmall, po.person.balance < 0 ? styles.debtLabel : po.person.balance > 0 ? styles.creditLabel : po.hasUnknownPriceItems ? styles.pendingLabel : styles.settledLabel]}>
+                {po.person.balance < 0
                   ? t('run.debtLabel')
-                  : po.person.balance < 0
+                  : po.person.balance > 0
                     ? t('run.creditLabel')
                     : po.hasUnknownPriceItems
                       ? t('run.pendingLabel')
@@ -2033,7 +2033,7 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
               )}
             </View>
             <View style={styles.balanceValueRow}>
-              <Text style={[po.person.balance > 0 ? styles.debt : po.person.balance < 0 ? styles.credit : po.hasUnknownPriceItems ? styles.pending : styles.settled, compactMode && styles.personTotalCompact]}>
+              <Text style={[po.person.balance < 0 ? styles.debt : po.person.balance > 0 ? styles.credit : po.hasUnknownPriceItems ? styles.pending : styles.settled, compactMode && styles.personTotalCompact]}>
                 ${Math.abs(po.person.balance).toFixed(2)}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

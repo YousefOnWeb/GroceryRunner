@@ -162,10 +162,10 @@ export default function PeopleScreen() {
       let statusIcon = '✅';
       let balText = '';
 
-      if (p.balance > 0) {
+      if (p.balance < 0) {
         statusIcon = '❌';
         balText = t('people.youAreOwed', { amount: Math.abs(p.balance).toFixed(2) });
-      } else if (p.balance < 0) {
+      } else if (p.balance > 0) {
         statusIcon = '✅'; // They have credit with you
         balText = t('people.theyHaveCredit', { amount: Math.abs(p.balance).toFixed(2) });
       } else {
@@ -745,9 +745,9 @@ interface PersonCardProps {
 }
 
 const getCardBalanceLabel = (balance: number, hasUnknownPrices: boolean, t: any) => {
-  if (balance > 0) {
+  if (balance < 0) {
     return t('people.yourMoneyWithThem', { amount: Math.abs(balance).toFixed(2) });
-  } else if (balance < 0) {
+  } else if (balance > 0) {
     return t('people.theirMoneyWithYou', { amount: Math.abs(balance).toFixed(2) });
   } else {
     return hasUnknownPrices ? t('people.awaitingPrices') : t('people.settled');
@@ -755,8 +755,8 @@ const getCardBalanceLabel = (balance: number, hasUnknownPrices: boolean, t: any)
 };
 
 const getCardBalanceColor = (balance: number, hasUnknownPrices: boolean) => {
-  if (balance > 0) return '#ff4444';
-  if (balance < 0) return '#00C851';
+  if (balance < 0) return '#ff4444';
+  if (balance > 0) return '#00C851';
   return hasUnknownPrices ? '#ff9800' : '#aaa';
 };
 

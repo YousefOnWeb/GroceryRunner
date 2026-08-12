@@ -20,8 +20,8 @@ export default function SettleUpModal({ visible, personId, personName, currentBa
   const { settings } = useSettings();
   const { t, isRTL } = useTranslation();
   
-  // Smart default: If balance > 0 (they owe money), auto-fill it. Otherwise 0.
-  const defaultAmount = currentBalance > 0 ? currentBalance : 0;
+  // Smart default: If balance < 0 (they owe money), auto-fill it. Otherwise 0.
+  const defaultAmount = currentBalance < 0 ? Math.abs(currentBalance) : 0;
   const [amountStr, setAmountStr] = useState(defaultAmount.toFixed(2));
   const [note, setNote] = useState('');
   const [markSettled, setMarkSettled] = useState(false);
@@ -30,7 +30,7 @@ export default function SettleUpModal({ visible, personId, personName, currentBa
 
   useEffect(() => {
     if (visible) {
-      setAmountStr(currentBalance > 0 ? currentBalance.toFixed(2) : '');
+      setAmountStr(currentBalance < 0 ? Math.abs(currentBalance).toFixed(2) : '');
       setNote('');
       setMarkSettled(false);
       setMarkAllPastSettled(false);
@@ -39,10 +39,10 @@ export default function SettleUpModal({ visible, personId, personName, currentBa
   }, [visible, currentBalance]);
 
   const parsedAmount = parseFloat(amountStr) || 0;
-  const newBalance = currentBalance - parsedAmount;
+  const newBalance = currentBalance + parsedAmount;
 
   // The confirmation message string based on inputs
-  const isCredit = newBalance < 0;
+  const isCredit = newBalance > 0;
   const absNewBalance = Math.abs(newBalance).toFixed(2);
   
   // Translation fallback logic
