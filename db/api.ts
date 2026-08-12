@@ -233,7 +233,8 @@ export const api = {
       }
 
       const personData = await tx.select({ balance: persons.balance }).from(persons).where(eq(persons.id, personId));
-      if (personData.length > 0 && personData[0].balance >= 0) {
+      const hasUnspecifiedPrices = orderLines.some(line => line.unitPrice === null);
+      if (!hasUnspecifiedPrices && personData.length > 0 && personData[0].balance >= 0) {
         await tx.update(orders).set({ isSettled: true }).where(eq(orders.id, orderId));
       }
     });
@@ -312,8 +313,11 @@ export const api = {
       }
 
       const personData = await tx.select({ balance: persons.balance }).from(persons).where(eq(persons.id, personId));
-      if (personData.length > 0 && personData[0].balance >= 0) {
+      const hasUnspecifiedPrices = newOrderLines.some(line => line.unitPrice === null);
+      if (!hasUnspecifiedPrices && personData.length > 0 && personData[0].balance >= 0) {
         await tx.update(orders).set({ isSettled: true }).where(eq(orders.id, orderId));
+      } else {
+        await tx.update(orders).set({ isSettled: false }).where(eq(orders.id, orderId));
       }
     });
   },

@@ -826,7 +826,7 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
                   compactMode && styles.personTotalCompact,
                   { textAlign: isRTL ? 'left' : 'right' }
                 ]}>
-                  ${po.totalCost.toFixed(2)}{po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}
+                  {po.totalCost === 0 && po.hasUnknownPriceItems ? t('common.priceTBD') : `$${po.totalCost.toFixed(2)}${po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}`}
                 </Text>
               </RNView>
               <RNView style={[styles.statusContainer, compactMode && { height: 16 }]}>

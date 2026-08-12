@@ -945,7 +945,7 @@ export default function TheRunScreen() {
             const cost = i.unitPrice !== null ? `$${(i.unitPrice * i.quantity).toFixed(2)}` : 'TBD';
             text += `    • ${i.quantity}x ${i.itemDef?.name} - ${cost}\n`;
           });
-          text += `    Total: $${po.totalCost.toFixed(2)}${po.hasUnknownPriceItems ? ' + TBD' : ''}\n`;
+          text += `    Total: ${po.totalCost === 0 && po.hasUnknownPriceItems ? 'TBD' : `$${po.totalCost.toFixed(2)}${po.hasUnknownPriceItems ? ' + TBD' : ''}`}\n`;
 
           let balText = '';
           if (po.person.balance > 0) balText = `You are owed: $${Math.abs(po.person.balance).toFixed(2)}`;
@@ -1963,7 +1963,7 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
                 )}
                 <View style={{ flex: 1, alignItems: 'flex-start', overflow: 'hidden', paddingEnd: 8, gap: 2 }}>
                   <Text style={[styles.personTotal, compactMode && styles.personTotalCompact, { textAlign: isRTL ? 'right' : 'left' }]}>
-                    ${po.totalCost.toFixed(2)}{po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}
+                    {po.totalCost === 0 && po.hasUnknownPriceItems ? t('common.priceTBD') : `$${po.totalCost.toFixed(2)}${po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}`}
                   </Text>
                   <View style={[styles.statusContainer, compactMode && { height: 16 }]}>
                     <Text style={[styles.statusText, po.unpaidCost > 0 ? styles.statusUnsettled : styles.statusSettled, compactMode && styles.textExtraSmall, { textAlign: isRTL ? 'right' : 'left' }]}>
