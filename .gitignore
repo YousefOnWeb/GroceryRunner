@@ -39,6 +39,4 @@ yarn-error.*
 # generated native folders
 /ios
 /android
-app.json
-eas.json
 Antigravity Manually Stashed Artifacts/walkthrough, optimizing the main and the unsettled tabs.md
