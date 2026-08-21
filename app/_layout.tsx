@@ -54,12 +54,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded && migrationSuccess) {
-      api.migrateSignConvention().then(() => {
-        SplashScreen.hideAsync();
-      }).catch(e => {
-        console.error('Data migration error:', e);
-        SplashScreen.hideAsync();
-      });
+      SplashScreen.hideAsync();
     }
   }, [loaded, migrationSuccess]);
 

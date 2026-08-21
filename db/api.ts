@@ -1225,30 +1225,4 @@ export const api = {
       await tx.delete(sourceAliases).where(sql`1=1`);
     });
   },
-  migrateSignConvention: async () => {
-    // 1. Check if migration is needed by looking for negative OrderCosts
-    // (In old convention, OrderCost was negative)
-    const oldTxs = await db.select().from(transactions).where(
-      and(eq(transactions.type, 'OrderCost'), sql`${transactions.amount} < 0`)
-    ).limit(1);
-
-    if (oldTxs.length === 0) {
-      console.log('No migration needed for sign convention.');
-      return; // Already migrated or no data
-    }
-
-    console.log('Migrating sign convention...');
-    await db.transaction(async (tx) => {
-      // Invert all transaction amounts
-      await tx.update(transactions)
-        .set({ amount: sql`${transactions.amount} * -1` })
-        .where(sql`1=1`);
-
-      // Invert all person balances
-      await tx.update(persons)
-        .set({ balance: sql`${persons.balance} * -1` })
-        .where(sql`1=1`);
-    });
-    console.log('Migration complete.');
-  },
 };
