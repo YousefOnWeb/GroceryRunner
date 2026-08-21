@@ -9,7 +9,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { useSettings } from '@/utils/settings';
 import { useTranslation } from '@/utils/i18n';
-import { ACCENT_GOLD, LIGHT_GOLD, METALLIC_BEVEL, LIQUID_GOLD_STOPS } from '@/constants/Colors';
+import { ACCENT_GOLD, LIGHT_GOLD, METALLIC_BEVEL, LIQUID_GOLD_STOPS, SILVER_BEVEL, LIQUID_SILVER_STOPS } from '@/constants/Colors';
 import { formatDateLabel, formatDateTime } from '@/utils/dates';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
@@ -220,6 +220,11 @@ export default function UnsettledScreen() {
 
         groups[date].forEach(po => {
           list.push({
+            type: 'person-header',
+            id: `person-${po.order.id}`,
+            person: po.person,
+          });
+          list.push({
             type: 'order-card',
             id: `order-${po.order.id}`,
             po,
@@ -241,13 +246,14 @@ export default function UnsettledScreen() {
       });
 
       sortedPersonIds.forEach(pId => {
-        const personName = groups[pId][0].person.name;
+        const person = groups[pId][0].person;
         list.push({
           type: 'group-header',
           id: `header-person-${pId}`,
-          title: personName,
+          title: person.name,
           count: groups[pId].length,
           total: groups[pId].reduce((sum, po) => sum + po.totalCost, 0),
+          person: person,
         });
 
         groups[pId].forEach(po => {
@@ -260,6 +266,11 @@ export default function UnsettledScreen() {
       });
     } else {
       sortedOrders.forEach(po => {
+        list.push({
+          type: 'person-header',
+          id: `person-${po.order.id}`,
+          person: po.person,
+        });
         list.push({
           type: 'order-card',
           id: `order-${po.order.id}`,
@@ -275,9 +286,23 @@ export default function UnsettledScreen() {
   }, [sortedOrders, groupBy, sortOrder, isFocused]);
 
   // Order Handlers
-  const handleMarkAllPaid = React.useCallback(async (orderId: string, personId: string) => {}, []);
+  const handleMarkAllPaid = React.useCallback(async (orderId: string, personId: string) => {
+    try {
+      await api.markOrderSettled(orderId, true);
+    } catch (e) {
+      console.error(e);
+      Alert.alert(t('common.error'), 'Failed to mark order as settled.');
+    }
+  }, [t]);
 
-  const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {}, []);
+  const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {
+    try {
+      await api.markOrderSettled(orderId, false);
+    } catch (e) {
+      console.error(e);
+      Alert.alert(t('common.error'), 'Failed to mark order as unsettled.');
+    }
+  }, [t]);
 
   const handleCustomPayment = async (amount: number, note: string, markSettled?: boolean, markAllPastSettled?: boolean) => { 
     if (!payAmountOrder) return;
@@ -392,7 +417,7 @@ export default function UnsettledScreen() {
   };
 
   // Group Header Date Formatter
-  const renderGroupHeader = (title: string, count: number, total: number) => {
+  const renderGroupHeader = (title: string, count: number, total: number, person?: any) => {
     let displayTitle = title;
     if (groupBy === 'day') {
       try {
@@ -405,18 +430,29 @@ export default function UnsettledScreen() {
     }
 
     return (
-      <View style={[styles.groupHeader, settings.compactMode && styles.groupHeaderCompact]}>
-        <Text style={[styles.groupTitle, settings.compactMode && styles.groupTitleCompact]}>
-          {displayTitle}
-        </Text>
-        <View style={styles.groupMeta}>
-          <Text style={[styles.groupMetaText, settings.compactMode && styles.textExtraSmall]}>
-            {t('unsettled.unsettledOrdersCount', { count })}
+      <View style={[styles.groupHeader, settings.compactMode && styles.groupHeaderCompact, person && { flexDirection: 'row', alignItems: 'center' }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.groupTitle, settings.compactMode && styles.groupTitleCompact]}>
+            {displayTitle}
           </Text>
-          <Text style={[styles.groupTotalCost, settings.compactMode && styles.groupTitleCompact]}>
-            ${total.toFixed(2)}
-          </Text>
+          <View style={styles.groupMeta}>
+            <Text style={[styles.groupMetaText, settings.compactMode && styles.textExtraSmall]}>
+              {t('unsettled.unsettledOrdersCount', { count })}
+            </Text>
+            <Text style={[styles.groupTotalCost, settings.compactMode && styles.groupTitleCompact]}>
+              ${total.toFixed(2)}
+            </Text>
+          </View>
         </View>
+        {person && (
+          <TouchableOpacity onPress={() => handlePayAmountRequest({ id: '', personId: person.id, total: 0, personName: person.name, targetDate: '', currentBalance: person.balance })} style={styles.paymentShadow}>
+            <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
+              <LinearGradient colors={LIQUID_GOLD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.paymentBtnInner}>
+                <Text style={[styles.markAllPaidText, settings.compactMode && { fontSize: 10 }]}>{t('run.receivePaymentTitle')}</Text>
+              </LinearGradient>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -425,7 +461,29 @@ export default function UnsettledScreen() {
   const renderFlatItem = React.useCallback(({ item }: { item: any }) => {
     perfLog(`[PERF] [RenderItem called] Unsettled Render #${currentRender} - type=${item.type} id=${item.id}`);
     if (item.type === 'group-header') {
-      return renderGroupHeader(item.title, item.count, item.total);
+      return renderGroupHeader(item.title, item.count, item.total, item.person);
+    }
+
+    if (item.type === 'person-header') {
+      return (
+        <View style={{ backgroundColor: '#1a1a1a', paddingBottom: 10, paddingTop: 10, paddingHorizontal: 15 }}>
+          <View style={[styles.personHeaderRow, settings.compactMode && styles.personHeaderRowCompact, { marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <FontAwesome name="user" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} style={{ width: 24, textAlign: 'center' }} />
+              <Text style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact, { flex: 1 }]}>
+                {item.person.name}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => handlePayAmountRequest({ id: '', personId: item.person.id, total: 0, personName: item.person.name, targetDate: '', currentBalance: item.person.balance })} style={styles.paymentShadow}>
+              <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
+                <LinearGradient colors={LIQUID_GOLD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.paymentBtnInner}>
+                  <Text style={[styles.markAllPaidText, settings.compactMode && { fontSize: 10 }]}>{t('run.receivePaymentTitle')}</Text>
+                </LinearGradient>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
     }
 
     if (item.type === 'order-card') {
@@ -758,25 +816,6 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
               paddingEnd: 8,
               gap: 2 
             }}>
-              <TouchableOpacity onPress={() => onOrdersClick({ id: po.person.id, name: po.person.name })}>
-                <Text numberOfLines={1} ellipsizeMode="tail" style={[
-                  styles.personName, 
-                  compactMode && styles.personNameCompact, 
-                  { color: LIGHT_GOLD, textDecorationLine: 'underline', textAlign: isRTL ? 'right' : 'left' }
-                ]}>
-                  {po.person.name}
-                </Text>
-              </TouchableOpacity>
-              {po.deliveryPlace ? (
-                <Text numberOfLines={1} ellipsizeMode="tail" style={[
-                  styles.deliveryPlace, 
-                  compactMode && styles.textExtraSmall,
-                  { textAlign: isRTL ? 'right' : 'left' }
-                ]}>
-                  {po.deliveryPlace}
-                </Text>
-              ) : null}
-
               {/* Show date if not grouped by day */}
               {showDate ? (
                 <RNView style={{ 
@@ -901,10 +940,10 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
           </RNView>
 
           <RNView style={styles.buttonGroup}>
-            <TouchableOpacity onPress={() => onPayAmount({ id: po.order.id, personId: po.person.id, total: po.totalCost, personName: po.person.name, targetDate: po.order.targetDate, currentBalance: po.person.balance })} style={styles.paymentShadow}>
-              <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
-                <LinearGradient colors={LIQUID_GOLD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.paymentBtnInner}>
-                  <Text style={styles.markAllPaidText}>{t('run.receivePaymentTitle')}</Text>
+            <TouchableOpacity onPress={() => po.order.isSettled ? onMarkUnpaid(po.order.id, po.person.id) : onMarkPaid(po.order.id, po.person.id)} style={styles.paymentShadow}>
+              <LinearGradient colors={SILVER_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
+                <LinearGradient colors={LIQUID_SILVER_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.paymentBtnInner}>
+                  <Text style={[styles.markAllPaidText, compactMode && { fontSize: 10 }]}>{po.order.isSettled ? t('run.markUnsettled') : t('run.markSettled')}</Text>
                 </LinearGradient>
               </LinearGradient>
             </TouchableOpacity>
@@ -1128,20 +1167,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 3,
     elevation: 4,
-    borderRadius: 5,
+    borderRadius: 6,
   },
   paymentBtnOuter: {
-    borderRadius: 5,
-    padding: 1.5,
+    borderRadius: 6,
+    padding: 1,
   },
   paymentBtnInner: {
-    paddingVertical: 5,
-    paddingHorizontal: 16,
-    borderRadius: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 5,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  markAllPaidText: { color: '#1a1a1a', fontWeight: 'bold', fontSize: 13 },
+  markAllPaidText: { color: '#1a1a1a', fontWeight: 'bold', fontSize: 12 },
   markAllUnpaidBtn: {
     backgroundColor: '#2a2a2a',
     paddingHorizontal: 16,
@@ -1193,5 +1232,22 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 16,
     textAlign: 'center',
+  },
+  personHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 8,
+  },
+  personHeaderRowCompact: {
+    paddingVertical: 6,
+  },
+  personHeaderText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  personHeaderTextCompact: {
+    fontSize: 16,
   },
 });

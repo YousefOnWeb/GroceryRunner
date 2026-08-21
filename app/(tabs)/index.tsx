@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 import { eq } from 'drizzle-orm';
 
-import { ACCENT_GOLD, GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, METALLIC_BEVEL } from '@/constants/Colors';
+import { ACCENT_GOLD, GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, METALLIC_BEVEL, SILVER_BEVEL, LIQUID_SILVER_STOPS } from '@/constants/Colors';
 // -----------------------
 import { useFocusEffect } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
@@ -745,10 +745,19 @@ export default function TheRunScreen() {
           return (
             <View style={{ backgroundColor: '#1a1a1a', paddingBottom: 10 }}>
               <View style={[styles.personHeaderRow, settings.compactMode && styles.personHeaderRowCompact, { marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }]}>
-                <FontAwesome name="user" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} style={{ width: 24, textAlign: 'center' }} />
-                <Text style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact, { flex: 1 }]}>
-                  {item.person.name}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <FontAwesome name="user" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} style={{ width: 24, textAlign: 'center' }} />
+                  <Text style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact, { flex: 1 }]}>
+                    {item.person.name}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => handlePayAmountRequest({ id: '', personId: item.person.id, total: 0, personName: item.person.name, targetDate: '', currentBalance: item.person.balance })} style={styles.paymentShadow}>
+                  <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
+                    <LinearGradient colors={LIQUID_GOLD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.paymentBtnInner}>
+                      <Text style={[styles.markAllPaidText, settings.compactMode && { fontSize: 10 }]}>{t('run.receivePaymentTitle')}</Text>
+                    </LinearGradient>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
             </View>
           );
@@ -876,9 +885,23 @@ export default function TheRunScreen() {
     setPayAmountOrder({ ...payInfo, date: payInfo.targetDate });
   }, []);
 
-  const handleMarkAllPaid = React.useCallback(async (orderId: string, personId: string) => {}, []);
+  const handleMarkAllPaid = React.useCallback(async (orderId: string, personId: string) => {
+    try {
+      await api.markOrderSettled(orderId, true);
+    } catch (e) {
+      console.error(e);
+      Alert.alert(t('common.error'), 'Failed to mark order as settled.');
+    }
+  }, [t]);
 
-  const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {}, []);
+  const handleMarkAllUnpaid = React.useCallback(async (orderId: string, personId: string) => {
+    try {
+      await api.markOrderSettled(orderId, false);
+    } catch (e) {
+      console.error(e);
+      Alert.alert(t('common.error'), 'Failed to mark order as unsettled.');
+    }
+  }, [t]);
 
   const handleCustomPayment = async (amount: number, note: string, markSettled?: boolean, markAllPastSettled?: boolean) => {
     if (!payAmountOrder) return;
@@ -1627,21 +1650,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 3,
     elevation: 4,
-    borderRadius: 5,
+    borderRadius: 6,
   },
   paymentBtnOuter: {
-    borderRadius: 5,
-    padding: 1.5,
+    borderRadius: 6,
+    padding: 1,
   },
   paymentBtnInner: {
-    paddingVertical: 5,
-    paddingHorizontal: 16,
-    borderRadius: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 5,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  markAllPaidText: { color: '#1a1a1a', fontWeight: 'bold', fontSize: 12 },
   markAllPaidBtn: {},
-  markAllPaidText: { color: '#1a1a1a', fontWeight: 'bold', fontSize: 13 },
   payAmountBtn: {},
   markAllUnpaidBtn: {
     backgroundColor: '#2a2a2a',
@@ -2054,10 +2077,10 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
           </View>
           
           <View style={styles.buttonGroup}>
-            <TouchableOpacity onPress={() => onPayAmount({ id: po.order.id, personId: po.person.id, total: po.totalCost, personName: po.person.name, targetDate: po.order.targetDate, currentBalance: po.person.balance })} style={styles.paymentShadow}>
-              <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
-                <LinearGradient colors={LIQUID_GOLD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.paymentBtnInner}>
-                  <Text style={styles.markAllPaidText}>{t('run.receivePaymentTitle')}</Text>
+            <TouchableOpacity onPress={() => po.order.isSettled ? onMarkUnpaid(po.order.id, po.person.id) : onMarkPaid(po.order.id, po.person.id)} style={styles.paymentShadow}>
+              <LinearGradient colors={SILVER_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
+                <LinearGradient colors={LIQUID_SILVER_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.paymentBtnInner}>
+                  <Text style={[styles.markAllPaidText, compactMode && { fontSize: 10 }]}>{po.order.isSettled ? t('run.markUnsettled') : t('run.markSettled')}</Text>
                 </LinearGradient>
               </LinearGradient>
             </TouchableOpacity>
