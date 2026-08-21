@@ -228,6 +228,7 @@ export default function UnsettledScreen() {
             type: 'order-card',
             id: `order-${po.order.id}`,
             po,
+            isLastInThread: true,
           });
         });
       });
@@ -256,11 +257,12 @@ export default function UnsettledScreen() {
           person: person,
         });
 
-        groups[pId].forEach(po => {
+        groups[pId].forEach((po, index) => {
           list.push({
             type: 'order-card',
             id: `order-${po.order.id}`,
             po,
+            isLastInThread: index === groups[pId].length - 1,
           });
         });
       });
@@ -275,6 +277,7 @@ export default function UnsettledScreen() {
           type: 'order-card',
           id: `order-${po.order.id}`,
           po,
+          isLastInThread: true,
         });
       });
     }
@@ -466,7 +469,7 @@ export default function UnsettledScreen() {
 
     if (item.type === 'person-header') {
       return (
-        <View style={{ backgroundColor: '#1a1a1a', paddingBottom: 10, paddingTop: 10, paddingHorizontal: 15 }}>
+        <View style={{ backgroundColor: '#1a1a1a', paddingBottom: 10, paddingTop: 10 }}>
           <View style={[styles.personHeaderRow, settings.compactMode && styles.personHeaderRowCompact, { marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
               <FontAwesome name="user" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} style={{ width: 24, textAlign: 'center' }} />
@@ -487,22 +490,47 @@ export default function UnsettledScreen() {
     }
 
     if (item.type === 'order-card') {
+      const threadLineStyle: any = {
+        position: 'absolute',
+        top: 0,
+        bottom: item.isLastInThread ? '50%' : -(settings.compactMode ? 8 : 12),
+        width: 2,
+        backgroundColor: '#333',
+        left: 11
+      };
+      const dotStyle: any = {
+        position: 'absolute',
+        top: '50%',
+        left: 8,
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#333',
+        marginTop: -4,
+        zIndex: 1
+      };
+      const contentPadding = { paddingLeft: settings.compactMode ? 28 : 32 };
+
       return (
-        <UnsettledOrderCard
-          po={item.po}
-          compactMode={settings.compactMode}
-          isRTL={isRTL}
-          t={t}
-          showDate={groupBy !== 'day'}
-          onEdit={handleEditOrder}
-          onDelete={handleDeleteOrder}
-          onPayAmount={handlePayAmountRequest}
-          onMarkPaid={handleMarkAllPaid}
-          onMarkUnpaid={handleMarkAllUnpaid}
-          onUnknownPrice={setUnknownPricePerson}
-          onHistory={setLogPerson}
-          onOrdersClick={setOrdersPerson}
-        />
+        <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
+          <View style={threadLineStyle} />
+          <View style={dotStyle} />
+          <UnsettledOrderCard
+            po={item.po}
+            compactMode={settings.compactMode}
+            isRTL={isRTL}
+            t={t}
+            showDate={groupBy !== 'day'}
+            onEdit={handleEditOrder}
+            onDelete={handleDeleteOrder}
+            onPayAmount={handlePayAmountRequest}
+            onMarkPaid={handleMarkAllPaid}
+            onMarkUnpaid={handleMarkAllUnpaid}
+            onUnknownPrice={setUnknownPricePerson}
+            onHistory={setLogPerson}
+            onOrdersClick={setOrdersPerson}
+          />
+        </View>
       );
     }
 

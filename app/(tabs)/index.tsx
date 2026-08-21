@@ -450,7 +450,7 @@ export default function TheRunScreen() {
               type: 'task-card',
               id: `task-card-${po.person.id}-${po.order.id}`,
               po,
-              isLastInThread: !hasOrder
+              isLastInThread: true
             });
           }
         });
@@ -767,18 +767,28 @@ export default function TheRunScreen() {
           const threadLineStyle: any = {
             position: 'absolute',
             top: 0,
-            bottom: item.isLastInThread ? '50%' : 0,
+            bottom: item.isLastInThread ? '50%' : -(settings.compactMode ? 8 : 12),
             width: 2,
             backgroundColor: '#333',
-            ...(isRTL ? { right: 11 } : { left: 11 })
+            left: 11
           };
-          const contentPadding = isRTL 
-            ? { paddingRight: settings.compactMode ? 28 : 32, marginRight: 0 }
-            : { paddingLeft: settings.compactMode ? 28 : 32, marginLeft: 0 };
+          const dotStyle: any = {
+            position: 'absolute',
+            top: '50%',
+            left: 8,
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: '#333',
+            marginTop: -4,
+            zIndex: 1
+          };
+          const contentPadding = { paddingLeft: settings.compactMode ? 28 : 32 };
 
           return (
             <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
               <View style={threadLineStyle} />
+              <View style={dotStyle} />
               <View style={[styles.taskCardContainer, settings.compactMode && styles.taskCardContainerCompact]}>
                 <View style={styles.taskCardHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
@@ -813,18 +823,28 @@ export default function TheRunScreen() {
           const threadLineStyle: any = {
             position: 'absolute',
             top: 0,
-            bottom: item.isLastInThread ? '50%' : 0,
+            bottom: item.isLastInThread ? '50%' : -(settings.compactMode ? 8 : 12),
             width: 2,
             backgroundColor: '#333',
-            ...(isRTL ? { right: 11 } : { left: 11 })
+            left: 11
           };
-          const contentPadding = isRTL 
-            ? { paddingRight: settings.compactMode ? 28 : 32, marginRight: 0 }
-            : { paddingLeft: settings.compactMode ? 28 : 32, marginLeft: 0 };
+          const dotStyle: any = {
+            position: 'absolute',
+            top: '50%',
+            left: 8,
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: '#333',
+            marginTop: -4,
+            zIndex: 1
+          };
+          const contentPadding = { paddingLeft: settings.compactMode ? 28 : 32 };
 
           return (
               <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
                 <View style={threadLineStyle} />
+                <View style={dotStyle} />
                 <PersonOrderCard
                   po={po}
                   selectionMode={selectionMode}
