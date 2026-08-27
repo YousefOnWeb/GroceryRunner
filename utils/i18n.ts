@@ -141,6 +141,7 @@ export const translations = {
       markAllPastSettled: 'Mark this and all past orders as settled',
       receivePaymentNote: 'Note / Description',
       noteMandatory: 'Note/Description is mandatory',
+      searchPlaceholder: 'Search meetups and deliveries...',
     },
     addOrder: {
       createTitle: 'Create New Order',
@@ -523,6 +524,7 @@ export const translations = {
       markAllPastSettled: 'تحديد هذا الطلب والطلبات السابقة كمسواة',
       receivePaymentNote: 'ملاحظة / وصف',
       noteMandatory: 'الملاحظة مطلوبة',
+      searchPlaceholder: 'ابحث في المقابلات والتوصيلات...',
     },
     addOrder: {
       createTitle: 'إنشاء طلب جديد',

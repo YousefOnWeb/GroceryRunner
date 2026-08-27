@@ -22,7 +22,26 @@ import { ACCENT_GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, LIQUID_SILVER_STOPS, METALL
 // -----------------------
 import { useIsFocused } from '@react-navigation/native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, I18nManager, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { Alert, FlatList, I18nManager, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+
+const HighlightText = ({ text, highlight, style, numberOfLines, ellipsizeMode }: { text: string; highlight?: string; style?: any; numberOfLines?: number; ellipsizeMode?: any }) => {
+  if (!highlight || !highlight.trim()) {
+    return <Text style={style} numberOfLines={numberOfLines} ellipsizeMode={ellipsizeMode}>{text}</Text>;
+  }
+  const regex = new RegExp(`(${highlight.trim().replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})`, 'gi');
+  const parts = text.split(regex);
+  return (
+    <Text style={style} numberOfLines={numberOfLines} ellipsizeMode={ellipsizeMode}>
+      {parts.map((part, i) =>
+        regex.test(part) ? (
+          <Text key={i} style={{ backgroundColor: 'rgba(255, 215, 0, 0.4)', color: '#fff' }}>{part}</Text>
+        ) : (
+          <Text key={i}>{part}</Text>
+        )
+      )}
+    </Text>
+  );
+};
 
 const getHardwareInfo = () => {
   return {
@@ -44,6 +63,7 @@ const perfLog = (message: string) => {
 
 export default function TheRunScreen() {
   const [targetDate, setTargetDate] = useState(getDefaultDate());
+  const [searchQuery, setSearchQuery] = useState('');
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
@@ -185,7 +205,7 @@ export default function TheRunScreen() {
 
     const memoStart = performance.now();
     const agg: Record<string, { item: any; totalQuantity: number; totalCost: number }> = {};
-    const pOrders: Record<string, { person: any; order: any; items: any[]; tasks: any[]; totalCost: number; unpaidCost: number; hasUnpaidItems: boolean; hasUnknownPriceItems: boolean; deliveryPlace: string | null }> = {};
+    const pOrders: Record<string, { person: any; order: any; items: any[]; tasks: any[]; totalCost: number; unpaidCost: number; hasUnpaidItems: boolean; hasUnknownPriceItems: boolean; deliveryPlace: string | null; searchBlob: string; showOrder?: boolean; showTasks?: boolean }> = {};
 
     if (!allOrders || !allOrderItems || !catalog || !people || !allTasks) {
       perfLog(`[PERF] [useMemo] DB tables not fully loaded yet inside Render #${renderCountRef.current}`);
@@ -225,6 +245,10 @@ export default function TheRunScreen() {
       let unpaidCost = 0;
       let hasUnpaidItems = false;
       let hasUnknownPriceItems = false;
+      const searchStrings: string[] = [];
+      if (person) searchStrings.push(person.name);
+      const place = order.deliveryPlace || (person ? person.typicalPlace : null);
+      if (place) searchStrings.push(place);
 
       const orderDetails = itemsForOrder.map((oi) => {
         const itemDef = catalog.find((c) => c.id === oi.itemId);
@@ -243,6 +267,7 @@ export default function TheRunScreen() {
           }
           agg[itemDef.id].totalQuantity += oi.quantity;
           agg[itemDef.id].totalCost += cost;
+          searchStrings.push(itemDef.name);
         }
 
         return { ...oi, itemDef };
@@ -258,7 +283,8 @@ export default function TheRunScreen() {
           unpaidCost,
           hasUnpaidItems,
           hasUnknownPriceItems,
-          deliveryPlace: order.deliveryPlace || person.typicalPlace
+          deliveryPlace: order.deliveryPlace || person.typicalPlace,
+          searchBlob: searchStrings.join(' ').toLowerCase()
         };
       }
     });
@@ -276,10 +302,12 @@ export default function TheRunScreen() {
             unpaidCost: 0,
             hasUnpaidItems: false,
             hasUnknownPriceItems: false,
-            deliveryPlace: t.locationPlace || person.typicalPlace
+            deliveryPlace: t.locationPlace || person.typicalPlace,
+            searchBlob: `${person.name} ${t.locationPlace || person.typicalPlace || ''}`.toLowerCase()
           };
         }
         pOrders[person.id].tasks.push(t);
+        pOrders[person.id].searchBlob += ' ' + (t.title || '').toLowerCase();
       }
     });
 
@@ -413,6 +441,37 @@ export default function TheRunScreen() {
     list.push({ type: 'deliveries-header', id: 'deliveries-header' });
 
     peopleOrders.forEach((group) => {
+      let filteredOrders = group.orders;
+      const query = searchQuery.trim().toLowerCase();
+
+      if (query) {
+        filteredOrders = group.orders.map(po => {
+          const personNameMatches = po.person.name.toLowerCase().includes(query);
+          const locMatches = (po.deliveryPlace || '').toLowerCase().includes(query);
+
+          let orderMatches = personNameMatches || locMatches;
+          if (!orderMatches) {
+             orderMatches = po.items.some((i: any) => (i.itemDef?.name || '').toLowerCase().includes(query));
+          }
+
+          let taskMatches = personNameMatches || locMatches;
+          if (!taskMatches) {
+             taskMatches = po.tasks.some((t: any) => (t.title || '').toLowerCase().includes(query));
+          }
+
+          if (orderMatches || taskMatches) {
+            return {
+              ...po,
+              showOrder: orderMatches || po.items.length === 0,
+              showTasks: taskMatches || po.tasks.length === 0
+            };
+          }
+          return null;
+        }).filter(Boolean);
+      }
+
+      if (filteredOrders.length === 0) return;
+
       list.push({
         type: 'location-header',
         id: `location-${group.location}`,
@@ -421,7 +480,7 @@ export default function TheRunScreen() {
 
       const isCollapsed = collapsedLocations[group.location];
       if (!isCollapsed) {
-        group.orders.forEach((po, index) => {
+        filteredOrders.forEach((po: any, index: number) => {
           // 1. Person Header
           list.push({
             type: 'person-header',
@@ -430,8 +489,10 @@ export default function TheRunScreen() {
             deliveryPlace: po.deliveryPlace
           });
 
-          const hasTasks = po.tasks && po.tasks.length > 0;
-          const hasOrder = po.items && po.items.length > 0;
+          const hasTasks = po.tasks && po.tasks.length > 0 && (!query || po.showTasks);
+          const hasOrder = po.items && po.items.length > 0 && (!query || po.showOrder);
+          
+          if (!hasTasks && !hasOrder) return;
 
           // 2. Order Card
           if (hasOrder) {
@@ -478,6 +539,7 @@ export default function TheRunScreen() {
     optimisticTasks,
     generalTasks,
     physicalChecklist,
+    searchQuery,
   ]);
 
   const handleScroll = React.useCallback((e: any) => {
@@ -714,6 +776,31 @@ export default function TheRunScreen() {
                 <FontAwesome name="truck" size={settings.compactMode ? 18 : 22} color={ACCENT_GOLD} />
                 <Text style={[styles.sectionTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.deliveries')}</Text>
               </View>
+              <View style={{ position: 'relative', justifyContent: 'center' }}>
+                <TextInput
+                  style={[
+                    styles.searchInput,
+                    settings.compactMode && styles.searchInputCompact,
+                    {
+                      textAlign: isRTL ? 'right' : 'left',
+                      paddingRight: isRTL ? 12 : 35,
+                      paddingLeft: isRTL ? 35 : 12,
+                    }
+                  ]}
+                  placeholder={t('run.searchPlaceholder')}
+                  placeholderTextColor="#888"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity
+                    style={{ position: 'absolute', right: isRTL ? undefined : 12, left: isRTL ? 12 : undefined }}
+                    onPress={() => setSearchQuery('')}
+                  >
+                    <FontAwesome name="times-circle" size={settings.compactMode ? 16 : 18} color="#888" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           );
         case 'location-header': {
@@ -746,9 +833,11 @@ export default function TheRunScreen() {
               <View style={[styles.personHeaderRow, settings.compactMode && styles.personHeaderRowCompact, { marginBottom: 0, borderBottomWidth: 0, paddingBottom: 0 }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                   <FontAwesome name="user" size={settings.compactMode ? 14 : 16} color={ACCENT_GOLD} style={{ width: 24, textAlign: 'center' }} />
-                  <Text style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact, { flex: 1 }]}>
-                    {item.person.name}
-                  </Text>
+                  <HighlightText
+                    text={item.person.name}
+                    highlight={searchQuery}
+                    style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact, { flex: 1 }]}
+                  />
                 </View>
                 <TouchableOpacity onPress={() => handlePayAmountRequest({ id: '', personId: item.person.id, total: 0, personName: item.person.name, targetDate: '', currentBalance: item.person.balance })} style={styles.paymentShadow}>
                   <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
@@ -804,6 +893,7 @@ export default function TheRunScreen() {
                         task={task}
                         isCompleted={isCompleted}
                         compactMode={settings.compactMode}
+                        searchQuery={searchQuery}
                         onToggle={toggleTaskStatus}
                         onLongPress={handleTaskLongPress}
                         onEdit={handleEditTask}
@@ -851,6 +941,7 @@ export default function TheRunScreen() {
                 compactMode={settings.compactMode}
                 isRTL={isRTL}
                 t={t}
+                searchQuery={searchQuery}
                 onLongPress={handleOrderLongPress}
                 onPress={handleOrderPress}
                 onEdit={handleEditOrder}
@@ -891,6 +982,7 @@ export default function TheRunScreen() {
     settings.compactMode,
     isRTL,
     t,
+    searchQuery,
   ]);
 
   const toggleCheck = React.useCallback((itemId: string) => {
@@ -1553,6 +1645,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     width: '100%',
   },
+  searchInputCompact: {
+    paddingVertical: 6,
+    fontSize: 14,
+  },
   locationGroup: { marginBottom: 25 },
   locationHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   deliveryLocationTitle: { fontSize: 18, fontWeight: 'bold', color: LIGHT_GOLD, marginStart: 8 },
@@ -1867,6 +1963,7 @@ const MemoizedPhysicalTaskRow = React.memo(function MemoizedPhysicalTaskRow({
 interface MemoizedPersonTaskProps extends MemoizedTaskProps {
   onEdit: (task: any) => void;
   onDelete: (taskId: string, title: string) => void;
+  searchQuery?: string;
 }
 
 const MemoizedPersonTaskRow = React.memo(function MemoizedPersonTaskRow({
@@ -1876,7 +1973,8 @@ const MemoizedPersonTaskRow = React.memo(function MemoizedPersonTaskRow({
   onToggle,
   onLongPress,
   onEdit,
-  onDelete
+  onDelete,
+  searchQuery
 }: MemoizedPersonTaskProps) {
   return (
     <View style={[styles.personTaskRow, compactMode && styles.personTaskRowCompact]}>
@@ -1886,9 +1984,11 @@ const MemoizedPersonTaskRow = React.memo(function MemoizedPersonTaskRow({
         onLongPress={() => onLongPress(task)}
       >
         <FontAwesome name={isCompleted ? "check-square-o" : "square-o"} size={compactMode ? 16 : 18} color={isCompleted ? ACCENT_GOLD : "#888"} />
-        <Text style={[styles.personTaskText, isCompleted && styles.personTaskTextCompleted, compactMode && styles.textSmall]}>
-          {task.title}
-        </Text>
+        <HighlightText
+          text={task.title}
+          highlight={searchQuery}
+          style={[styles.personTaskText, isCompleted && styles.personTaskTextCompleted, compactMode && styles.textSmall]}
+        />
       </TouchableOpacity>
       <View style={{ flexDirection: 'row', gap: 12, marginStart: 10 }}>
         <TouchableOpacity onPress={() => onEdit(task)}>
@@ -1904,7 +2004,8 @@ const MemoizedPersonTaskRow = React.memo(function MemoizedPersonTaskRow({
   return prev.task.id === next.task.id &&
     prev.task.title === next.task.title &&
     prev.isCompleted === next.isCompleted &&
-    prev.compactMode === next.compactMode;
+    prev.compactMode === next.compactMode &&
+    prev.searchQuery === next.searchQuery;
 });
 
 interface OrderItemRowProps {
@@ -1912,6 +2013,7 @@ interface OrderItemRowProps {
   compactMode: boolean;
   isRTL: boolean;
   t: (key: string, params?: any) => string;
+  searchQuery?: string;
 }
 
 const OrderItemRow = React.memo(function OrderItemRow({
@@ -1919,6 +2021,7 @@ const OrderItemRow = React.memo(function OrderItemRow({
   compactMode,
   isRTL,
   t,
+  searchQuery
 }: OrderItemRowProps) {
   const itemCost = (item.unitPrice ?? 0) * item.quantity;
   return (
@@ -1936,12 +2039,13 @@ const OrderItemRow = React.memo(function OrderItemRow({
             x{item.quantity}
           </Text>
         </View>
-        <Text
+        <HighlightText
+          text={(isRTL ? '\u200F' : '') + (item.itemDef?.name || '')}
+          highlight={searchQuery}
+          style={[styles.itemText, { flexShrink: 1, marginStart: 0 }, compactMode && styles.textExtraSmall]}
           numberOfLines={1}
           ellipsizeMode="tail"
-          style={[styles.itemText, { flexShrink: 1, marginStart: 0 }, compactMode && styles.textExtraSmall]}>
-          {isRTL ? '\u200F' : ''}{item.itemDef?.name}
-        </Text>
+        />
       </View>
       <View style={styles.itemPriceContainer}>
         {item.unitPrice === null ? (
@@ -1971,6 +2075,7 @@ interface PersonOrderCardProps {
   onUnknownPrice: (personInfo: { id: string; name: string }) => void;
   onHistory: (personInfo: { id: string; name: string }) => void;
   onOrdersClick: (personInfo: { id: string; name: string }) => void;
+  searchQuery?: string;
 }
 
 const PersonOrderCard = React.memo(function PersonOrderCard({
@@ -1990,6 +2095,7 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
   onUnknownPrice,
   onHistory,
   onOrdersClick,
+  searchQuery,
 }: PersonOrderCardProps) {
   return (
     <View style={styles.cardShadow}>
@@ -2053,6 +2159,7 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
                 compactMode={compactMode}
                 isRTL={isRTL}
                 t={t}
+                searchQuery={searchQuery}
               />
             ))}
           </View>
@@ -2126,7 +2233,8 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
     prev.selectionMode === next.selectionMode &&
     prev.isSelected === next.isSelected &&
     prev.compactMode === next.compactMode &&
-    prev.isRTL === next.isRTL;
+    prev.isRTL === next.isRTL &&
+    prev.searchQuery === next.searchQuery;
 });
 
 interface ShoppingListItemRowProps {
