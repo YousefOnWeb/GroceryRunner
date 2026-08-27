@@ -1,15 +1,15 @@
-import React, { useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, TouchableOpacity, View, I18nManager, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, TextInput } from './Themed';
-import { db } from '@/db';
-import { orders, orderItems, items } from '@/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { ACCENT_GOLD, LIGHT_GOLD } from '@/constants/Colors';
-import { useSettings } from '@/utils/settings';
-import { useTranslation } from '@/utils/i18n';
+import { db } from '@/db';
+import { items, orderItems, orders } from '@/db/schema';
 import { formatDateLabel, formatDateTime } from '@/utils/dates';
+import { useTranslation } from '@/utils/i18n';
+import { useSettings } from '@/utils/settings';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { eq } from 'drizzle-orm';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
+import React, { useMemo, useState } from 'react';
+import { I18nManager, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text, TextInput } from './Themed';
 
 interface PersonOrdersModalProps {
   visible: boolean;
@@ -41,10 +41,10 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
       unitPrice: orderItems.unitPrice,
       itemName: items.name,
     })
-    .from(orderItems)
-    .innerJoin(items, eq(orderItems.itemId, items.id))
-    .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(eq(orders.personId, personId))
+      .from(orderItems)
+      .innerJoin(items, eq(orderItems.itemId, items.id))
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(eq(orders.personId, personId))
   );
 
   const processedOrders = useMemo(() => {
@@ -55,7 +55,7 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
       const totalCost = itemsForOrder.reduce((sum, i) => sum + (i.unitPrice ?? 0) * i.quantity, 0);
       const isFullySettled = order.isSettled;
       const hasUnknownPrices = itemsForOrder.some(i => i.unitPrice === null);
-      
+
       return {
         ...order,
         items: itemsForOrder,
@@ -116,7 +116,7 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
 
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.overlay}
       >
@@ -144,8 +144,8 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
           </View>
 
           <View style={[styles.sortRow, settings.compactMode && styles.sortRowCompact]}>
-            <TouchableOpacity 
-              style={[styles.sortTab, sortBy === 'date' && styles.sortTabActive]} 
+            <TouchableOpacity
+              style={[styles.sortTab, sortBy === 'date' && styles.sortTabActive]}
               onPress={() => toggleSort('date')}
             >
               <Text style={[styles.sortTabText, sortBy === 'date' && styles.sortTabTextActive, settings.compactMode && styles.textExtraSmall]}>
@@ -155,9 +155,9 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
                 <FontAwesome name={sortOrder === 'asc' ? "caret-up" : "caret-down"} size={12} color="#fff" style={{ marginStart: 4 }} />
               )}
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.sortTab, sortBy === 'status' && styles.sortTabActive]} 
+
+            <TouchableOpacity
+              style={[styles.sortTab, sortBy === 'status' && styles.sortTabActive]}
               onPress={() => toggleSort('status')}
             >
               <Text style={[styles.sortTabText, sortBy === 'status' && styles.sortTabTextActive, settings.compactMode && styles.textExtraSmall]}>
@@ -168,8 +168,8 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.sortTab, sortBy === 'total' && styles.sortTabActive]} 
+            <TouchableOpacity
+              style={[styles.sortTab, sortBy === 'total' && styles.sortTabActive]}
               onPress={() => toggleSort('total')}
             >
               <Text style={[styles.sortTabText, sortBy === 'total' && styles.sortTabTextActive, settings.compactMode && styles.textExtraSmall]}>
@@ -180,8 +180,8 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.sortTab, sortBy === 'modified' && styles.sortTabActive]} 
+            <TouchableOpacity
+              style={[styles.sortTab, sortBy === 'modified' && styles.sortTabActive]}
               onPress={() => toggleSort('modified')}
             >
               <Text style={[styles.sortTabText, sortBy === 'modified' && styles.sortTabTextActive, settings.compactMode && styles.textExtraSmall]}>
@@ -235,13 +235,20 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
                     </Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.orderItems}>
                   {order.items.map((item) => (
                     <View key={item.id} style={styles.itemRow}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1, overflow: 'hidden' }}>
-                        <View style={[styles.quantityBadge, settings.compactMode && styles.quantityBadgeCompact]}>
-                          <Text style={[styles.quantityText, settings.compactMode && styles.quantityTextCompact]}>
+                        <View style={[
+                          styles.quantityBadge,
+                          settings.compactMode && styles.quantityBadgeCompact,
+                        ]}>
+                          <Text style={[
+                            styles.quantityText,
+                            settings.compactMode && styles.quantityTextCompact,
+                            item.quantity > 1 && styles.quantityTextMultiple
+                          ]}>
                             {item.quantity}x
                           </Text>
                         </View>
@@ -385,10 +392,11 @@ const styles = StyleSheet.create({
   },
   itemText: { color: '#ccc', fontSize: 13 },
   itemPrice: { color: '#888', fontSize: 12 },
-  quantityBadge: { backgroundColor: '#333', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  quantityText: { color: '#ccc', fontWeight: 'bold', fontSize: 12 },
-  quantityBadgeCompact: { paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4 },
-  quantityTextCompact: { fontSize: 10 },
+  quantityBadge: { backgroundColor: '#333', paddingHorizontal: 6, paddingVertical: 0, borderRadius: 4, height: 16, justifyContent: 'center', alignItems: 'center' },
+  quantityText: { color: '#ccc', fontWeight: '500', fontSize: 11, lineHeight: 12 },
+  quantityTextMultiple: { fontWeight: '900' },
+  quantityBadgeCompact: { paddingHorizontal: 4, paddingVertical: 0, borderRadius: 4, height: 14, justifyContent: 'center', alignItems: 'center' },
+  quantityTextCompact: { fontSize: 11, lineHeight: 11 },
   priceBadge: { backgroundColor: '#2a2a2a', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   emptyContainer: {
     alignItems: 'center',

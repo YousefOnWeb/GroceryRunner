@@ -1,29 +1,28 @@
 import CreditLogModal from '@/components/CreditLogModal';
-import SettleUpModal from '@/components/SettleUpModal';
 import PersonOrdersModal from '@/components/PersonOrdersModal';
-import { Text, View, TextInput } from '@/components/Themed';
+import SettleUpModal from '@/components/SettleUpModal';
+import { Text, View } from '@/components/Themed';
 import UnknownPriceModal from '@/components/UnknownPriceModal';
 import { db } from '@/db';
 import { api } from '@/db/api';
 import { items, orderItems, orders, persons, tasks } from '@/db/schema';
 import { formatDateLabel, formatDateTime, generateDateOptions, getDefaultDate, getLocalDateString } from '@/utils/dates';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from '@/utils/i18n';
 import { useSettings } from '@/utils/settings';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { eq } from 'drizzle-orm';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import * as Clipboard from 'expo-clipboard';
-import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
-import { eq } from 'drizzle-orm';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 
-import { ACCENT_GOLD, GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, METALLIC_BEVEL, SILVER_BEVEL, LIQUID_SILVER_STOPS } from '@/constants/Colors';
+import { ACCENT_GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, LIQUID_SILVER_STOPS, METALLIC_BEVEL, SILVER_BEVEL } from '@/constants/Colors';
 // -----------------------
-import { useFocusEffect } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
-import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Alert, AppState, I18nManager, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, FlatList, I18nManager, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 
 const getHardwareInfo = () => {
   return {
@@ -151,10 +150,10 @@ export default function TheRunScreen() {
       itemId: orderItems.itemId,
       quantity: orderItems.quantity,
       unitPrice: orderItems.unitPrice,
-      })
-    .from(orderItems)
-    .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(eq(orders.targetDate, targetDateDb)),
+    })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(eq(orders.targetDate, targetDateDb)),
     [targetDateDb]
   );
   const { data: catalog } = useLiveQuery(db.select().from(items));
@@ -183,7 +182,7 @@ export default function TheRunScreen() {
     if (!isFocused && lastAggregatedRef.current) {
       return lastAggregatedRef.current!;
     }
-    
+
     const memoStart = performance.now();
     const agg: Record<string, { item: any; totalQuantity: number; totalCost: number }> = {};
     const pOrders: Record<string, { person: any; order: any; items: any[]; tasks: any[]; totalCost: number; unpaidCost: number; hasUnpaidItems: boolean; hasUnknownPriceItems: boolean; deliveryPlace: string | null }> = {};
@@ -372,12 +371,12 @@ export default function TheRunScreen() {
   }, [allOrders, allOrderItems, catalog, people, allTasks, targetDate, settings.groupByFreshness, settings.locationOrder, settings.sourceOrder, isFocused]);
 
   const lastFlatListRef = useRef<any[]>(null);
-  
+
   const flatListData = useMemo<any[]>(() => {
     if (!isFocused && lastFlatListRef.current) {
       return lastFlatListRef.current!;
     }
-    
+
     needsYRecompute.current = true;
     const listStart = performance.now();
     const list: any[] = [];
@@ -430,10 +429,10 @@ export default function TheRunScreen() {
             person: po.person,
             deliveryPlace: po.deliveryPlace
           });
-          
+
           const hasTasks = po.tasks && po.tasks.length > 0;
           const hasOrder = po.items && po.items.length > 0;
-          
+
           // 2. Order Card
           if (hasOrder) {
             list.push({
@@ -497,18 +496,18 @@ export default function TheRunScreen() {
 
         let h = itemHeights.current[item.id];
         if (h === undefined) {
-           if (item.type === 'location-header') h = 45;
-           else if (item.type === 'person-header') h = 45;
-           else if (item.type === 'deliveries-header') h = 45;
-           else if (item.type === 'separator') h = 20;
-           else if (item.type === 'shopping-header') h = 100;
-           else if (item.type === 'shopping-source') h = 60;
-           else if (item.type === 'order-card') h = 100;
-           else h = 50; 
+          if (item.type === 'location-header') h = 45;
+          else if (item.type === 'person-header') h = 45;
+          else if (item.type === 'deliveries-header') h = 45;
+          else if (item.type === 'separator') h = 20;
+          else if (item.type === 'shopping-header') h = 100;
+          else if (item.type === 'shopping-source') h = 60;
+          else if (item.type === 'order-card') h = 100;
+          else h = 50;
         }
         currentY += h;
       }
-      
+
       locationYPositions.current = newLocY;
       personYPositions.current = newPersY;
       needsYRecompute.current = false;
@@ -842,28 +841,28 @@ export default function TheRunScreen() {
           const contentPadding = { paddingLeft: settings.compactMode ? 28 : 32 };
 
           return (
-              <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
-                <View style={threadLineStyle} />
-                <View style={dotStyle} />
-                <PersonOrderCard
-                  po={po}
-                  selectionMode={selectionMode}
-                  isSelected={isSelected}
-                  compactMode={settings.compactMode}
-                  isRTL={isRTL}
-                  t={t}
-                  onLongPress={handleOrderLongPress}
-                  onPress={handleOrderPress}
-                  onEdit={handleEditOrder}
-                  onDelete={handleDeleteOrder}
-                  onPayAmount={handlePayAmountRequest}
-                  onMarkPaid={handleMarkAllPaid}
-                  onMarkUnpaid={handleMarkAllUnpaid}
-                  onUnknownPrice={setUnknownPricePerson}
-                  onHistory={setLogPerson}
-                  onOrdersClick={setOrdersPerson}
-                />
-              </View>
+            <View style={[{ position: 'relative' }, contentPadding, { marginBottom: settings.compactMode ? 8 : 12 }]}>
+              <View style={threadLineStyle} />
+              <View style={dotStyle} />
+              <PersonOrderCard
+                po={po}
+                selectionMode={selectionMode}
+                isSelected={isSelected}
+                compactMode={settings.compactMode}
+                isRTL={isRTL}
+                t={t}
+                onLongPress={handleOrderLongPress}
+                onPress={handleOrderPress}
+                onEdit={handleEditOrder}
+                onDelete={handleDeleteOrder}
+                onPayAmount={handlePayAmountRequest}
+                onMarkPaid={handleMarkAllPaid}
+                onMarkUnpaid={handleMarkAllUnpaid}
+                onUnknownPrice={setUnknownPricePerson}
+                onHistory={setLogPerson}
+                onOrdersClick={setOrdersPerson}
+              />
+            </View>
           );
         }
         case 'empty-deliveries':
@@ -930,12 +929,12 @@ export default function TheRunScreen() {
       console.log(`[PAYMENT DEBUG - index] Starting payment flow for ${payAmountOrder.personName}`);
       console.log(`[PAYMENT DEBUG - index] Amount: ${amount}, Note: ${note}, markSettled: ${markSettled}, markAllPastSettled: ${markAllPastSettled}`);
       const startTime = performance.now();
-      
+
       console.log(`[PAYMENT DEBUG - index] Calling api.receivePayment...`);
       let stepStart = performance.now();
       await api.receivePayment(payAmountOrder.personId, amount, note);
       console.log(`[PAYMENT DEBUG - index] api.receivePayment completed in ${(performance.now() - stepStart).toFixed(2)}ms`);
-      
+
       if (markAllPastSettled) {
         console.log(`[PAYMENT DEBUG - index] Calling api.markPastOrdersSettled...`);
         stepStart = performance.now();
@@ -1296,7 +1295,7 @@ export default function TheRunScreen() {
         {(activeLocation || activePerson) && (
           <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, backgroundColor: '#1a1a1a', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 3, elevation: 5 }}>
             {activeLocation && (
-              <View 
+              <View
                 onLayout={e => { locationHeaderHeight.current = e.nativeEvent.layout.height; }}
                 style={{ paddingHorizontal: settings.compactMode ? 8 : 15, paddingTop: 0, paddingBottom: 10 }}>
                 <TouchableOpacity
@@ -1601,13 +1600,14 @@ const styles = StyleSheet.create({
   itemText: { fontSize: 16, color: '#fff' },
   itemPrice: { fontSize: 14, color: '#aaa', fontWeight: '500' },
   itemTextCrossed: { textDecorationLine: 'line-through', color: '#666' },
-  quantityBadge: { backgroundColor: '#3d3522', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  quantityText: { color: '#eee', fontWeight: 'bold', fontSize: 12 },
-  quantityBadgeCompact: { backgroundColor: '#3d3522', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5 },
-  quantityTextCompact: { fontSize: 12 },
+  quantityBadge: { backgroundColor: '#3d3522', paddingHorizontal: 6, paddingVertical: 0, borderRadius: 4, height: 16, justifyContent: 'center', alignItems: 'center' },
+  quantityText: { color: '#eee', fontWeight: '500', fontSize: 11, lineHeight: 12 },
+  quantityTextMultiple: { fontWeight: '900' },
+  quantityBadgeCompact: { backgroundColor: '#3d3522', paddingHorizontal: 5, paddingVertical: 0, borderRadius: 4, height: 16, justifyContent: 'center', alignItems: 'center' },
+  quantityTextCompact: { fontSize: 12, lineHeight: 11 },
   quantityBadgeCrossed: { opacity: 0.7 },
   quantityTextCrossed: { color: '#666', textDecorationLine: 'line-through' },
-  priceBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  priceBadge: { paddingHorizontal: 6, paddingVertical: 0, borderRadius: 6 },
   priceText: { color: '#aaa', fontSize: 12 },
   emptyText: { color: '#888', fontStyle: 'italic', marginBottom: 20 },
   separator: { height: 1, backgroundColor: '#444', marginVertical: 20 },
@@ -1833,9 +1833,9 @@ const MemoizedTaskPill = React.memo(function MemoizedTaskPill({
   );
 }, (prev, next) => {
   return prev.task.id === next.task.id &&
-         prev.task.title === next.task.title &&
-         prev.isCompleted === next.isCompleted &&
-         prev.compactMode === next.compactMode;
+    prev.task.title === next.task.title &&
+    prev.isCompleted === next.isCompleted &&
+    prev.compactMode === next.compactMode;
 });
 
 const MemoizedPhysicalTaskRow = React.memo(function MemoizedPhysicalTaskRow({
@@ -1859,9 +1859,9 @@ const MemoizedPhysicalTaskRow = React.memo(function MemoizedPhysicalTaskRow({
   );
 }, (prev, next) => {
   return prev.task.id === next.task.id &&
-         prev.task.title === next.task.title &&
-         prev.isCompleted === next.isCompleted &&
-         prev.compactMode === next.compactMode;
+    prev.task.title === next.task.title &&
+    prev.isCompleted === next.isCompleted &&
+    prev.compactMode === next.compactMode;
 });
 
 interface MemoizedPersonTaskProps extends MemoizedTaskProps {
@@ -1902,9 +1902,9 @@ const MemoizedPersonTaskRow = React.memo(function MemoizedPersonTaskRow({
   );
 }, (prev, next) => {
   return prev.task.id === next.task.id &&
-         prev.task.title === next.task.title &&
-         prev.isCompleted === next.isCompleted &&
-         prev.compactMode === next.compactMode;
+    prev.task.title === next.task.title &&
+    prev.isCompleted === next.isCompleted &&
+    prev.compactMode === next.compactMode;
 });
 
 interface OrderItemRowProps {
@@ -1924,8 +1924,15 @@ const OrderItemRow = React.memo(function OrderItemRow({
   return (
     <View style={[styles.itemRow2, compactMode && styles.itemRow2Compact]}>
       <View style={[styles.itemInfo, { alignItems: 'center', flexDirection: 'row', gap: 8, flexShrink: 1, overflow: 'hidden' }]}>
-        <View style={[styles.quantityBadge, compactMode && styles.quantityBadgeCompact]}>
-          <Text style={[styles.quantityText, compactMode && styles.quantityTextCompact]}>
+        <View style={[
+          styles.quantityBadge,
+          compactMode && styles.quantityBadgeCompact,
+        ]}>
+          <Text style={[
+            styles.quantityText,
+            compactMode && styles.quantityTextCompact,
+            item.quantity > 1 && styles.quantityTextMultiple
+          ]}>
             x{item.quantity}
           </Text>
         </View>
@@ -2095,7 +2102,7 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
               </View>
             </View>
           </View>
-          
+
           <View style={styles.buttonGroup}>
             <TouchableOpacity onPress={() => po.order.isSettled ? onMarkUnpaid(po.order.id, po.person.id) : onMarkPaid(po.order.id, po.person.id)} style={styles.paymentShadow}>
               <LinearGradient colors={SILVER_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
@@ -2111,15 +2118,15 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
   );
 }, (prev, next) => {
   return prev.po.order.id === next.po.order.id &&
-         prev.po.person.balance === next.po.person.balance &&
-         prev.po.unpaidCost === next.po.unpaidCost &&
-         prev.po.totalCost === next.po.totalCost &&
-         prev.po.hasUnknownPriceItems === next.po.hasUnknownPriceItems &&
-         prev.po.items.length === next.po.items.length &&
-         prev.selectionMode === next.selectionMode &&
-         prev.isSelected === next.isSelected &&
-         prev.compactMode === next.compactMode &&
-         prev.isRTL === next.isRTL;
+    prev.po.person.balance === next.po.person.balance &&
+    prev.po.unpaidCost === next.po.unpaidCost &&
+    prev.po.totalCost === next.po.totalCost &&
+    prev.po.hasUnknownPriceItems === next.po.hasUnknownPriceItems &&
+    prev.po.items.length === next.po.items.length &&
+    prev.selectionMode === next.selectionMode &&
+    prev.isSelected === next.isSelected &&
+    prev.compactMode === next.compactMode &&
+    prev.isRTL === next.isRTL;
 });
 
 interface ShoppingListItemRowProps {
@@ -2147,8 +2154,17 @@ const ShoppingListItemRow = React.memo(function ShoppingListItemRow({
         color={ACCENT_GOLD}
       />
       <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', gap: 8, overflow: 'hidden', marginStart: 10 }}>
-        <View style={[styles.quantityBadge, compactMode && styles.quantityBadgeCompact, isChecked && styles.quantityBadgeCrossed]}>
-          <Text style={[styles.quantityText, compactMode && styles.quantityTextCompact, isChecked && styles.quantityTextCrossed]}>
+        <View style={[
+          styles.quantityBadge,
+          compactMode && styles.quantityBadgeCompact,
+          isChecked && styles.quantityBadgeCrossed
+        ]}>
+          <Text style={[
+            styles.quantityText,
+            compactMode && styles.quantityTextCompact,
+            isChecked && styles.quantityTextCrossed,
+            ag.totalQuantity > 1 && styles.quantityTextMultiple
+          ]}>
             x{ag.totalQuantity}
           </Text>
         </View>
@@ -2179,9 +2195,9 @@ const ShoppingListItemRow = React.memo(function ShoppingListItemRow({
   );
 }, (prev, next) => {
   return prev.ag === next.ag &&
-         prev.isChecked === next.isChecked &&
-         prev.compactMode === next.compactMode &&
-         prev.isRTL === next.isRTL;
+    prev.isChecked === next.isChecked &&
+    prev.compactMode === next.compactMode &&
+    prev.isRTL === next.isRTL;
 });
 
 interface SourceGroupCardProps {
@@ -2248,10 +2264,10 @@ const SourceGroupCard = React.memo(function SourceGroupCard({
   );
 }, (prev, next) => {
   return prev.sourceKey === next.sourceKey &&
-         prev.itemsList === next.itemsList &&
-         prev.sourceTotal === next.sourceTotal &&
-         prev.isCollapsed === next.isCollapsed &&
-         prev.checkedItems === next.checkedItems &&
-         prev.compactMode === next.compactMode &&
-         prev.isRTL === next.isRTL;
+    prev.itemsList === next.itemsList &&
+    prev.sourceTotal === next.sourceTotal &&
+    prev.isCollapsed === next.isCollapsed &&
+    prev.checkedItems === next.checkedItems &&
+    prev.compactMode === next.compactMode &&
+    prev.isRTL === next.isRTL;
 });

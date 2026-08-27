@@ -1,10 +1,10 @@
 import { Text } from '@/components/Themed';
+import { ACCENT_GOLD } from '@/constants/Colors';
 import { api } from '@/db/api';
+import { useTranslation } from '@/utils/i18n';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import React, { useEffect, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useTranslation } from '@/utils/i18n';
-import { ACCENT_GOLD } from '@/constants/Colors';
 
 interface UnknownPriceModalProps {
   visible: boolean;
@@ -48,7 +48,10 @@ export default function UnknownPriceModal({
               <View key={idx} style={styles.itemRow}>
                 <View style={styles.dot} />
                 <View style={styles.quantityBadge}>
-                  <Text style={styles.quantityText}>{item.quantity}x</Text>
+                  <Text style={[
+                    styles.quantityText,
+                    item.quantity > 1 && styles.quantityTextMultiple
+                  ]}>{item.quantity}x</Text>
                 </View>
                 <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.itemText, { flexShrink: 1, marginStart: 8 }]}>
                   {item.itemName}
@@ -125,13 +128,20 @@ const styles = StyleSheet.create({
   quantityBadge: {
     backgroundColor: '#333',
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingVertical: 0,
+    borderRadius: 4,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   quantityText: {
     color: '#ccc',
-    fontWeight: 'bold',
-    fontSize: 14,
+    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 13,
+  },
+  quantityTextMultiple: {
+    fontWeight: '900',
   },
   dateText: {
     fontSize: 12,

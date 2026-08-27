@@ -1,26 +1,26 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Keyboard, I18nManager, FlatList, View as RNView, Pressable, Animated } from 'react-native';
-import { Text, View, TextInput } from '@/components/Themed';
+import { Text, TextInput, View } from '@/components/Themed';
+import { ACCENT_GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, LIQUID_SILVER_STOPS, METALLIC_BEVEL, SILVER_BEVEL } from '@/constants/Colors';
 import { db } from '@/db';
 import { api } from '@/db/api';
-import { orderItems, orders, personAliases, persons, items } from '@/db/schema';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { and, eq, sql } from 'drizzle-orm';
-import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import { useSettings } from '@/utils/settings';
-import { useTranslation } from '@/utils/i18n';
-import { ACCENT_GOLD, LIGHT_GOLD, METALLIC_BEVEL, LIQUID_GOLD_STOPS, SILVER_BEVEL, LIQUID_SILVER_STOPS } from '@/constants/Colors';
+import { items, orderItems, orders, personAliases, persons } from '@/db/schema';
 import { formatDateLabel, formatDateTime } from '@/utils/dates';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useTranslation } from '@/utils/i18n';
+import { useSettings } from '@/utils/settings';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useIsFocused } from '@react-navigation/native';
+import { eq } from 'drizzle-orm';
+import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, FlatList, KeyboardAvoidingView, Platform, View as RNView, StyleSheet, TouchableOpacity } from 'react-native';
 
 // Modals
 import CreditLogModal from '@/components/CreditLogModal';
-import UnknownPriceModal from '@/components/UnknownPriceModal';
-import SettleUpModal from '@/components/SettleUpModal';
-import PersonOrdersModal from '@/components/PersonOrdersModal';
 import DropdownSelect from '@/components/DropdownSelect';
+import PersonOrdersModal from '@/components/PersonOrdersModal';
+import SettleUpModal from '@/components/SettleUpModal';
+import UnknownPriceModal from '@/components/UnknownPriceModal';
 
 const ENABLE_PERF_LOGGING = true;
 const perfLog = (message: string) => {
@@ -70,10 +70,10 @@ export default function UnsettledScreen() {
       itemId: orderItems.itemId,
       quantity: orderItems.quantity,
       unitPrice: orderItems.unitPrice,
-      })
-    .from(orderItems)
-    .innerJoin(orders, eq(orderItems.orderId, orders.id))
-    .where(eq(orders.isSettled, false))
+    })
+      .from(orderItems)
+      .innerJoin(orders, eq(orderItems.orderId, orders.id))
+      .where(eq(orders.isSettled, false))
   );
 
   const { data: catalog } = useLiveQuery(db.select().from(items));
@@ -187,14 +187,14 @@ export default function UnsettledScreen() {
 
   // Flatten and group for FlatList data array
   const lastFlatListRef = useRef<any[]>(null);
-  
+
   const flatListData = useMemo<any[]>(() => {
     const start = performance.now();
-    
+
     if (!isFocused && lastFlatListRef.current) {
       return lastFlatListRef.current!;
     }
-    
+
     const list: any[] = [];
 
     if (groupBy === 'day') {
@@ -307,19 +307,19 @@ export default function UnsettledScreen() {
     }
   }, [t]);
 
-  const handleCustomPayment = async (amount: number, note: string, markSettled?: boolean, markAllPastSettled?: boolean) => { 
+  const handleCustomPayment = async (amount: number, note: string, markSettled?: boolean, markAllPastSettled?: boolean) => {
     if (!payAmountOrder) return;
     try {
       console.log('\n==================================================');
       console.log(`[PAYMENT DEBUG - unsettled] Starting payment flow for ${payAmountOrder.personName}`);
       console.log(`[PAYMENT DEBUG - unsettled] Amount: ${amount}, Note: ${note}, markSettled: ${markSettled}, markAllPastSettled: ${markAllPastSettled}`);
       const startTime = performance.now();
-      
+
       console.log(`[PAYMENT DEBUG - unsettled] Calling api.receivePayment...`);
       let stepStart = performance.now();
       await api.receivePayment(payAmountOrder.personId, amount, note);
       console.log(`[PAYMENT DEBUG - unsettled] api.receivePayment completed in ${(performance.now() - stepStart).toFixed(2)}ms`);
-      
+
       if (markAllPastSettled) {
         console.log(`[PAYMENT DEBUG - unsettled] Calling api.markPastOrdersSettled...`);
         stepStart = performance.now();
@@ -588,68 +588,68 @@ export default function UnsettledScreen() {
         </View>
 
         <View style={[
-            styles.filterBarRow, 
-            settings.compactMode && styles.filterBarRowCompact,
-          ]}>
-            <View style={styles.dropdownContainer}>
-              <Text style={[
-                styles.dropdownLabel, 
-                { textAlign: isRTL ? 'right' : 'left' },
-                settings.compactMode && styles.textExtraSmall
-              ]}>
-                {t('unsettled.groupBy')}
-              </Text>
-              <DropdownSelect
-                compact={settings.compactMode}
-                value={groupByValueLabel}
-                options={[t('unsettled.groupByDay'), t('unsettled.groupByPerson'), t('unsettled.noGrouping')]}
-                onSelect={(val) => {
-                  if (val === t('unsettled.groupByDay')) setGroupBy('day');
-                  else if (val === t('unsettled.groupByPerson')) setGroupBy('person');
-                  else setGroupBy('none');
-                }}
-              />
-            </View>
+          styles.filterBarRow,
+          settings.compactMode && styles.filterBarRowCompact,
+        ]}>
+          <View style={styles.dropdownContainer}>
+            <Text style={[
+              styles.dropdownLabel,
+              { textAlign: isRTL ? 'right' : 'left' },
+              settings.compactMode && styles.textExtraSmall
+            ]}>
+              {t('unsettled.groupBy')}
+            </Text>
+            <DropdownSelect
+              compact={settings.compactMode}
+              value={groupByValueLabel}
+              options={[t('unsettled.groupByDay'), t('unsettled.groupByPerson'), t('unsettled.noGrouping')]}
+              onSelect={(val) => {
+                if (val === t('unsettled.groupByDay')) setGroupBy('day');
+                else if (val === t('unsettled.groupByPerson')) setGroupBy('person');
+                else setGroupBy('none');
+              }}
+            />
+          </View>
 
-            <View style={styles.dropdownContainer}>
-              <Text style={[
-                styles.dropdownLabel, 
-                { textAlign: isRTL ? 'right' : 'left' },
-                settings.compactMode && styles.textExtraSmall
-              ]}>
-                {t('unsettled.sortBy')}
-              </Text>
-              <View style={[
-                styles.sortTriggerRow,
-              ]}>
-                <View style={{ flex: 1 }}>
-                  <DropdownSelect
-                    compact={settings.compactMode}
-                    value={sortByValueLabel}
-                    options={[t('unsettled.sortByDate'), t('unsettled.sortByAmount'), t('unsettled.sortByName')]}
-                    onSelect={(val) => {
-                      if (val === t('unsettled.sortByDate')) setSortBy('date');
-                      else if (val === t('unsettled.sortByAmount')) setSortBy('amount');
-                      else setSortBy('name');
-                    }}
-                  />
-                </View>
-                <TouchableOpacity
-                  style={[
-                    styles.sortOrderToggleBtn,
-                    settings.compactMode && { height: 36, width: 36, borderRadius: 6 }
-                  ]}
-                  onPress={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                >
-                  <FontAwesome
-                    name={sortOrder === 'asc' ? "sort-amount-asc" : "sort-amount-desc"}
-                    size={settings.compactMode ? 12 : 16}
-                    color={ACCENT_GOLD}
-                  />
-                </TouchableOpacity>
+          <View style={styles.dropdownContainer}>
+            <Text style={[
+              styles.dropdownLabel,
+              { textAlign: isRTL ? 'right' : 'left' },
+              settings.compactMode && styles.textExtraSmall
+            ]}>
+              {t('unsettled.sortBy')}
+            </Text>
+            <View style={[
+              styles.sortTriggerRow,
+            ]}>
+              <View style={{ flex: 1 }}>
+                <DropdownSelect
+                  compact={settings.compactMode}
+                  value={sortByValueLabel}
+                  options={[t('unsettled.sortByDate'), t('unsettled.sortByAmount'), t('unsettled.sortByName')]}
+                  onSelect={(val) => {
+                    if (val === t('unsettled.sortByDate')) setSortBy('date');
+                    else if (val === t('unsettled.sortByAmount')) setSortBy('amount');
+                    else setSortBy('name');
+                  }}
+                />
               </View>
+              <TouchableOpacity
+                style={[
+                  styles.sortOrderToggleBtn,
+                  settings.compactMode && { height: 36, width: 36, borderRadius: 6 }
+                ]}
+                onPress={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+              >
+                <FontAwesome
+                  name={sortOrder === 'asc' ? "sort-amount-asc" : "sort-amount-desc"}
+                  size={settings.compactMode ? 12 : 16}
+                  color={ACCENT_GOLD}
+                />
+              </TouchableOpacity>
             </View>
           </View>
+        </View>
       </View>
     );
   };
@@ -764,8 +764,15 @@ const OrderItemRow = React.memo(function OrderItemRow({
   return (
     <RNView style={[styles.itemRow2, compactMode && styles.itemRow2Compact]}>
       <RNView style={[styles.itemInfo, { alignItems: 'center', flexDirection: 'row', gap: 8, flexShrink: 1, overflow: 'hidden' }]}>
-        <RNView style={[styles.quantityBadge, compactMode && styles.quantityBadgeCompact]}>
-          <Text style={[styles.quantityText, compactMode && styles.quantityTextCompact]}>
+        <RNView style={[
+          styles.quantityBadge,
+          compactMode && styles.quantityBadgeCompact,
+        ]}>
+          <Text style={[
+            styles.quantityText,
+            compactMode && styles.quantityTextCompact,
+            item.quantity > 1 && styles.quantityTextMultiple
+          ]}>
             x{item.quantity}
           </Text>
         </RNView>
@@ -834,23 +841,23 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
       <RNView style={[styles.personCard, compactMode && styles.personCardCompact]}>
         <RNView style={[styles.personBody, compactMode && styles.personBodyCompact]}>
           <RNView style={[
-            styles.personHeader, 
+            styles.personHeader,
             compactMode && styles.personHeaderCompact,
           ]}>
-            <RNView style={{ 
-              flex: 1, 
-              alignItems: 'flex-start', 
-              overflow: 'hidden', 
+            <RNView style={{
+              flex: 1,
+              alignItems: 'flex-start',
+              overflow: 'hidden',
               paddingEnd: 8,
-              gap: 2 
+              gap: 2
             }}>
               {/* Show date if not grouped by day */}
               {showDate ? (
-                <RNView style={{ 
-                  flexDirection: 'row', 
-                  alignItems: 'center', 
-                  marginTop: 2, 
-                  gap: 4 
+                <RNView style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: 2,
+                  gap: 4
                 }}>
                   <Text style={[styles.dateTypeLabel, compactMode && styles.textExtraSmall]}>
                     {t('unsettled.deliveryDate')}:
@@ -861,11 +868,11 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
                 </RNView>
               ) : null}
 
-              <RNView style={{ 
-                flexDirection: 'row', 
-                alignItems: 'center', 
-                marginTop: 2, 
-                gap: 4 
+              <RNView style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginTop: 2,
+                gap: 4
               }}>
                 <Text style={[styles.dateTypeLabel, compactMode && styles.textExtraSmall]}>
                   {t('unsettled.timeOfCreation')}:
@@ -889,7 +896,7 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
                   </TouchableOpacity>
                 </RNView>
                 <Text style={[
-                  styles.personTotal, 
+                  styles.personTotal,
                   compactMode && styles.personTotalCompact,
                   { textAlign: isRTL ? 'left' : 'right' }
                 ]}>
@@ -898,8 +905,8 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
               </RNView>
               <RNView style={[styles.statusContainer, compactMode && { height: 16 }]}>
                 <Text style={[
-                  styles.statusText, 
-                  po.unpaidCost > 0 ? styles.statusUnsettled : styles.statusSettled, 
+                  styles.statusText,
+                  po.unpaidCost > 0 ? styles.statusUnsettled : styles.statusSettled,
                   compactMode && styles.textExtraSmall
                 ]}>
                   {po.hasUnknownPriceItems ? t('run.statusAwaitingPrices') : po.unpaidCost > 0 ? t('run.statusUnsettled') : t('run.statusSettled')}
@@ -982,14 +989,14 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
   );
 }, (prev, next) => {
   return prev.po.order.id === next.po.order.id &&
-         prev.po.person.balance === next.po.person.balance &&
-         prev.po.unpaidCost === next.po.unpaidCost &&
-         prev.po.totalCost === next.po.totalCost &&
-         prev.po.hasUnknownPriceItems === next.po.hasUnknownPriceItems &&
-         prev.po.items.length === next.po.items.length &&
-         prev.compactMode === next.compactMode &&
-         prev.isRTL === next.isRTL &&
-         prev.showDate === next.showDate;
+    prev.po.person.balance === next.po.person.balance &&
+    prev.po.unpaidCost === next.po.unpaidCost &&
+    prev.po.totalCost === next.po.totalCost &&
+    prev.po.hasUnknownPriceItems === next.po.hasUnknownPriceItems &&
+    prev.po.items.length === next.po.items.length &&
+    prev.compactMode === next.compactMode &&
+    prev.isRTL === next.isRTL &&
+    prev.showDate === next.showDate;
 });
 
 // ==========================================
@@ -1006,7 +1013,7 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   title: { fontSize: 24, fontWeight: 'bold', color: '#fff', letterSpacing: 1.2 },
-  
+
   // Outstanding outstanding balance banner
   stripOuter: {
     marginBottom: 15,
@@ -1161,7 +1168,7 @@ const styles = StyleSheet.create({
   itemText: { fontSize: 15, color: '#fff' },
   personItemText: { color: '#ccc', fontSize: 14 },
   personItemPaid: { textDecorationLine: 'line-through', color: '#666' },
-  
+
   // Footer
   personFooter: {
     flexDirection: 'row',
@@ -1218,10 +1225,11 @@ const styles = StyleSheet.create({
     borderColor: '#444',
   },
   markAllUnpaidText: { color: ACCENT_GOLD, fontWeight: 'bold', fontSize: 13 },
-  quantityBadge: { backgroundColor: '#3d3522', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  quantityText: { color: '#eee', fontWeight: 'bold', fontSize: 12 },
-  quantityBadgeCompact: { backgroundColor: '#3d3522', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5 },
-  quantityTextCompact: { fontSize: 12 },
+  quantityBadge: { backgroundColor: '#3d3522', paddingHorizontal: 6, paddingVertical: 0, borderRadius: 4, height: 16, justifyContent: 'center', alignItems: 'center' },
+  quantityText: { color: '#eee', fontWeight: '500', fontSize: 11, lineHeight: 12 },
+  quantityTextMultiple: { fontWeight: '900' },
+  quantityBadgeCompact: { backgroundColor: '#3d3522', paddingHorizontal: 5, paddingVertical: 0, borderRadius: 4, height: 14, justifyContent: 'center', alignItems: 'center' },
+  quantityTextCompact: { fontSize: 11, lineHeight: 11 },
   quantityBadgeCrossed: { opacity: 0.7 },
   quantityTextCrossed: { color: '#666', textDecorationLine: 'line-through' },
   itemPriceContainer: { width: 60, alignItems: 'flex-end' },
