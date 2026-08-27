@@ -18,6 +18,7 @@ export const personAliases = sqliteTable('personAliases', {
 export const items = sqliteTable('items', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  description: text('description'),
   defaultPrice: real('defaultPrice'),
   source: text('source'),
   timing: text('timing', { enum: ['Fresh', 'Anytime'] }).notNull().default('Fresh'),

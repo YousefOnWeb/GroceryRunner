@@ -156,14 +156,14 @@ export const api = {
     return trimmed;
   },
   
-  addItem: async (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', aliases?: string[], pricePromptAlways: boolean = false) => {
+  addItem: async (name: string, description: string | null, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', aliases?: string[], pricePromptAlways: boolean = false) => {
     const trimmed = name.trim();
     const existing = await db.select().from(items).where(sql`lower(name) = lower(${trimmed})`);
     if (existing.length > 0) return existing;
     
     let finalSource = source ? await api.resolveSourceByNameOrAlias(source) : null;
 
-    const result = await db.insert(items).values({ id: generateId(), name: trimmed, defaultPrice, source: finalSource, timing, pricePromptAlways }).returning();
+    const result = await db.insert(items).values({ id: generateId(), name: trimmed, description: description?.trim() || null, defaultPrice, source: finalSource, timing, pricePromptAlways }).returning();
     
     if (aliases && aliases.length > 0) {
       const aliasValues = aliases
@@ -373,7 +373,7 @@ export const api = {
     return api.changeBalance(personId, amount, note);
   },
   
-  updateItem: async (id: string, updates: Partial<{ name: string; defaultPrice: number | null; source: string | null; timing: 'Fresh' | 'Anytime', aliases: string[], pricePromptAlways: boolean }>, isCorrection: boolean = false) => {
+  updateItem: async (id: string, updates: Partial<{ name: string; description: string | null; defaultPrice: number | null; source: string | null; timing: 'Fresh' | 'Anytime', aliases: string[], pricePromptAlways: boolean }>, isCorrection: boolean = false) => {
     let finalSource = updates.source !== undefined ? (updates.source ? await api.resolveSourceByNameOrAlias(updates.source) : null) : undefined;
     
     const { aliases, ...itemUpdates } = updates;
@@ -381,6 +381,7 @@ export const api = {
     
     if (finalSource !== undefined) finalUpdates.source = finalSource;
     if (updates.name) finalUpdates.name = updates.name.trim();
+    if (updates.description !== undefined) finalUpdates.description = updates.description?.trim() || null;
 
     // Fetch data for log and logic before update
     const oldItem = await db.select({ name: items.name, defaultPrice: items.defaultPrice }).from(items).where(eq(items.id, id));
@@ -731,6 +732,7 @@ export const api = {
         itemIdMap[i.id] = existing[0].id;
         if (strategy === 'replace') {
           await db.update(items).set({
+            description: i.description,
             defaultPrice: i.defaultPrice,
             source: i.source,
             timing: i.timing,
@@ -743,6 +745,7 @@ export const api = {
         await db.insert(items).values({
           id: newId,
           name: i.name,
+          description: i.description,
           defaultPrice: i.defaultPrice,
           source: i.source,
           timing: i.timing,

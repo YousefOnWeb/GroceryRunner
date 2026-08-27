@@ -18,13 +18,14 @@ interface CreateItemModalProps {
   title?: string;
   submitLabel?: string;
   initialName?: string;
+  initialDescription?: string | null;
   initialPrice?: number | null;
   initialSource?: string | null;
   initialTiming?: 'Fresh' | 'Anytime';
   initialAliases?: string[];
   initialPricePromptAlways?: boolean;
   onCancel: () => void;
-  onSubmit: (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[], pricePromptAlways: boolean) => void;
+  onSubmit: (name: string, description: string | null, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[], pricePromptAlways: boolean) => void;
 }
 
 export default function CreateItemModal({
@@ -32,6 +33,7 @@ export default function CreateItemModal({
   title = 'Create New Item',
   submitLabel = 'Create Item',
   initialName = '',
+  initialDescription = '',
   initialPrice = null,
   initialSource = '',
   initialTiming = 'Fresh',
@@ -41,6 +43,7 @@ export default function CreateItemModal({
   onSubmit,
 }: CreateItemModalProps) {
   const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(initialDescription || '');
   const [priceStr, setPriceStr] = useState(initialPrice ? String(initialPrice) : '');
   const [source, setSource] = useState(initialSource || '');
   const [sourceSearch, setSourceSearch] = useState('');
@@ -57,6 +60,7 @@ export default function CreateItemModal({
   useEffect(() => {
     if (visible) {
       setName(initialName);
+      setDescription(initialDescription || '');
       setPriceStr(initialPrice ? String(initialPrice) : '');
       setSource(initialSource || '');
       setSourceSearch('');
@@ -68,7 +72,7 @@ export default function CreateItemModal({
       setIsCorrection(false);
       setPricePromptAlways(initialPricePromptAlways);
     }
-  }, [visible, initialName, initialPrice, initialSource, initialTiming, initialAliases, initialPricePromptAlways]);
+  }, [visible, initialName, initialDescription, initialPrice, initialSource, initialTiming, initialAliases, initialPricePromptAlways]);
 
   const loadDistinctSources = async () => {
     try {
@@ -107,6 +111,7 @@ export default function CreateItemModal({
     const finalSource = (sourceSearch.trim() || source.trim()) || null;
     onSubmit(
       name,
+      description.trim() || null,
       isNaN(price) ? null : price,
       finalSource,
       timing,
@@ -139,6 +144,16 @@ export default function CreateItemModal({
             placeholder={t('modals.itemNamePlaceholder')}
             placeholderTextColor="#888"
             autoFocus={!isEditMode}
+          />
+
+          <Text style={[styles.label, settings.compactMode && styles.textExtraSmall]}>{t('modals.itemDescLabel') || 'Description (optional)'}</Text>
+          <TextInput
+            style={styles.input}
+            value={description}
+            onChangeText={setDescription}
+            placeholder={t('modals.itemDescPlaceholder') || 'e.g. Any specific details?'}
+            placeholderTextColor="#888"
+            multiline
           />
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15, marginTop: 5 }}>

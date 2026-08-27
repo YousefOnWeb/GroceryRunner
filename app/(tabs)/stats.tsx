@@ -108,9 +108,9 @@ export default function StatsScreen() {
 
   // --- ACTIONS ---
 
-  const handleSaveItem = async (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[]) => {
+  const handleSaveItem = async (name: string, description: string | null, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[], pricePromptAlways: boolean) => {
     if (!editingItem) return;
-    await api.updateItem(editingItem.id, { name, defaultPrice, source, timing, aliases }, isCorrection);
+    await api.updateItem(editingItem.id, { name, description, defaultPrice, source, timing, aliases, pricePromptAlways }, isCorrection);
     setEditingItem(null);
   };
 
@@ -521,10 +521,12 @@ export default function StatsScreen() {
           title={t('addOrder.editTitle')}
           submitLabel={t('modals.saveChanges')}
           initialName={editingItem.name}
+          initialDescription={editingItem.description}
           initialPrice={editingItem.defaultPrice}
           initialSource={editingItem.source}
           initialTiming={editingItem.timing}
           initialAliases={editingItemAliases}
+          initialPricePromptAlways={editingItem.pricePromptAlways}
           onCancel={() => setEditingItem(null)}
           onSubmit={handleSaveItem}
         />
@@ -707,6 +709,11 @@ const ItemCard = React.memo(function ItemCard({
           )}
         </View>
         <View style={[styles.itemDetails, compactMode && styles.itemDetailsCompact, { alignItems: 'flex-start' }]}>
+          {item.description && (
+            <Text style={[styles.detailText, compactMode && styles.textExtraSmall, { fontStyle: 'italic', marginBottom: 2 }]}>
+              {item.description}
+            </Text>
+          )}
           <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsPrice')} {item.defaultPrice ? `$${item.defaultPrice}` : t('stats.na')}</Text>
           <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsSource')} {item.source || t('stats.na')}</Text>
           <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsTiming')} {item.timing || t('stats.na')}</Text>

@@ -443,10 +443,10 @@ export default function AddOrderScreen() {
     }
   };
 
-  const handleCreateItemSubmit = async (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[], pricePromptAlways: boolean) => {
+  const handleCreateItemSubmit = async (name: string, description: string | null, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[], pricePromptAlways: boolean) => {
     setItemModalVisible(false);
     try {
-      const newItem = await api.addItem(name, defaultPrice, source, timing, aliases, pricePromptAlways);
+      const newItem = await api.addItem(name, description, defaultPrice, source, timing, aliases, pricePromptAlways);
       if (newItem && newItem.length > 0) {
         if (formMode === 'order') {
           const itemObj = newItem[0];

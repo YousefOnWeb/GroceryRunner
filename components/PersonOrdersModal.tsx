@@ -23,7 +23,7 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
   const { t, isRTL } = useTranslation();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'date' | 'status' | 'total' | 'modified' | 'none'>('none');
+  const [sortBy, setSortBy] = useState<'date' | 'status' | 'total' | 'modified' | 'none'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const { data: personOrders } = useLiveQuery(
