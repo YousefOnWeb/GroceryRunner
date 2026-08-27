@@ -94,6 +94,7 @@ export const translations = {
       invalidAmount: 'Please enter a valid number.',
       debtSuffix: '(Debt)',
       creditSuffix: '(Credit)',
+      warning: 'Warning',
     },
     run: {
       runLabel: 'Run:',
@@ -181,6 +182,9 @@ export const translations = {
       editSettledMsg: 'This order is already marked as settled. How should we handle the payment status during this edit?',
       keepSettled: 'Keep Settled (Adjust Credit)',
       markUnsettled: 'Mark as Unsettled (Revert Payment)',
+      cancelConfirm: 'You have unsaved changes. Are you sure you want to discard them?',
+      editingOrder: 'Editing Order',
+      editingTask: 'Editing Task',
     },
     people: {
       title: 'Balances',
@@ -477,6 +481,7 @@ export const translations = {
       invalidAmount: 'يرجى إدخال رقم صحيح.',
       debtSuffix: '(دين)',
       creditSuffix: '(رصيد)',
+      warning: 'تحذير',
     },
     run: {
       runLabel: 'القائمة:',
@@ -564,6 +569,9 @@ export const translations = {
       editSettledMsg: 'هذا الطلب محدد كمسوى بالفعل. كيف تريد معالجة حالة الدفع أثناء هذا التعديل؟',
       keepSettled: 'إبقاء الدفع (تعديل الرصيد)',
       markUnsettled: 'تحديد كغير مسوى (إلغاء الدفع)',
+      cancelConfirm: 'لديك تغييرات غير محفوظة. هل أنت متأكد من تجاهلها؟',
+      editingOrder: 'تعديل الطلب',
+      editingTask: 'تعديل المهمة',
     },
     people: {
       title: 'الأرصدة',

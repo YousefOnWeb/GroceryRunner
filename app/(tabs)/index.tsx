@@ -1645,10 +1645,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     width: '100%',
   },
-  searchInputCompact: {
-    paddingVertical: 6,
-    fontSize: 14,
-  },
   locationGroup: { marginBottom: 25 },
   locationHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   deliveryLocationTitle: { fontSize: 18, fontWeight: 'bold', color: LIGHT_GOLD, marginStart: 8 },

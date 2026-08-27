@@ -8,7 +8,8 @@ import { items, orderItems, orders, personAliases, persons, itemAliases, tasks }
 import { formatDateLabel, getDefaultDate, getLocalDateString } from '@/utils/dates';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, I18nManager, Switch } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSettings } from '@/utils/settings';
@@ -63,6 +64,10 @@ export default function AddOrderScreen() {
   const [taskTitle, setTaskTitle] = useState('');
   const [targetTime, setTargetTime] = useState<Date | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
+
+  // INITIAL EDIT STATE for change detection
+  const [initialOrderState, setInitialOrderState] = useState<{ cart: { id: string; quantity: number }[], deliveryPlace: string } | null>(null);
+  const [initialTaskState, setInitialTaskState] = useState<{ title: string, time: string | null, place: string, requiresMeeting: boolean, personId: string | null, date: string } | null>(null);
 
   const targetDateDb = getLocalDateString(targetDate);
   const existingOrder = useMemo(() => {
@@ -123,16 +128,28 @@ export default function AddOrderScreen() {
           setTargetDate(getDefaultDate()); // default to today if null
         }
         
+        
+        let timeStr = null;
         if (task.targetTime) {
           const [hours, minutes] = task.targetTime.split(':').map(Number);
           const d = new Date();
           d.setHours(hours, minutes, 0, 0);
           setTargetTime(d);
+          timeStr = task.targetTime;
         } else {
           setTargetTime(null);
         }
         
         setDeliveryPlace(task.locationPlace || '');
+
+        setInitialTaskState({
+          title: task.title || '',
+          time: timeStr,
+          place: task.locationPlace || '',
+          requiresMeeting: task.type === 'meetup_task',
+          personId: task.personId || null,
+          date: task.targetDate || getLocalDateString(getDefaultDate())
+        });
       }
     }
   }, [formMode, editTaskId, allTasks, people]);
@@ -179,6 +196,11 @@ export default function AddOrderScreen() {
     if (existingOrder.deliveryPlace) {
       setDeliveryPlace(existingOrder.deliveryPlace);
     }
+    
+    setInitialOrderState({
+      cart: newCart.map(c => ({ id: c.item!.id, quantity: c.quantity })),
+      deliveryPlace: existingOrder.deliveryPlace || ''
+    });
   };
 
   const selectPerson = (personId: string) => {
@@ -219,8 +241,80 @@ export default function AddOrderScreen() {
     setTaskTitle('');
     setTargetTime(null);
     setRequiresMeeting(false);
+    setInitialOrderState(null);
+    setInitialTaskState(null);
     router.setParams({ mode: undefined, editTaskId: undefined, edit: undefined, personId: undefined, date: undefined });
   };
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (formMode === 'order' && editModeOrderId && initialOrderState) {
+      if (initialOrderState.deliveryPlace !== deliveryPlace) return true;
+      if (initialOrderState.cart.length !== cart.length) return true;
+      for (const initialItem of initialOrderState.cart) {
+        const currentItem = cart.find(c => c.item.id === initialItem.id);
+        if (!currentItem || currentItem.quantity !== initialItem.quantity) return true;
+      }
+      return false;
+    } else if (formMode === 'task' && editTaskId && initialTaskState) {
+      if (initialTaskState.title !== taskTitle.trim()) return true;
+      if (initialTaskState.place !== deliveryPlace.trim()) return true;
+      if (initialTaskState.requiresMeeting !== requiresMeeting) return true;
+      let timeStr = null;
+      if (targetTime) {
+         timeStr = `${targetTime.getHours().toString().padStart(2, '0')}:${targetTime.getMinutes().toString().padStart(2, '0')}`;
+      }
+      if (initialTaskState.time !== timeStr) return true;
+      if (initialTaskState.personId !== (requiresMeeting ? selectedPersonId : null)) return true;
+      if (initialTaskState.date !== getLocalDateString(targetDate)) return true;
+      return false;
+    }
+    return false;
+  }, [formMode, editModeOrderId, editTaskId, initialOrderState, initialTaskState, cart, deliveryPlace, taskTitle, requiresMeeting, targetTime, selectedPersonId, targetDate]);
+
+  const handleCancelEdit = (fromBlur = false) => {
+    if (hasUnsavedChanges) {
+      Alert.alert(
+        t('common.warning') || "Unsaved Changes",
+        t('addOrder.cancelConfirm') || "You have unsaved changes. Are you sure you want to discard them?",
+        [
+          { text: t('common.no') || "No", style: 'cancel' },
+          { text: t('common.yes') || "Yes", style: 'destructive', onPress: () => resetForm() }
+        ]
+      );
+    } else {
+      resetForm();
+    }
+  };
+
+  const hasUnsavedChangesRef = useRef(false);
+  useEffect(() => { hasUnsavedChangesRef.current = hasUnsavedChanges; }, [hasUnsavedChanges]);
+
+  const editModeRef = useRef({ isEditing: false });
+  useEffect(() => { editModeRef.current.isEditing = !!(editModeOrderId || editTaskId); }, [editModeOrderId, editTaskId]);
+
+  const resetFormRef = useRef(resetForm);
+  useEffect(() => { resetFormRef.current = resetForm; }, [resetForm]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (editModeRef.current.isEditing) {
+          if (hasUnsavedChangesRef.current) {
+            Alert.alert(
+              t('common.warning') || "Unsaved Changes",
+              t('addOrder.cancelConfirm') || "You have unsaved changes. Are you sure you want to discard them?",
+              [
+                { text: t('common.no') || "No", style: 'cancel' },
+                { text: t('common.yes') || "Yes", style: 'destructive', onPress: () => resetFormRef.current() }
+              ]
+            );
+          } else {
+            resetFormRef.current();
+          }
+        }
+      };
+    }, [])
+  );
 
   const handleSaveOrder = async () => {
     if (!selectedPersonId) {
@@ -488,9 +582,11 @@ export default function AddOrderScreen() {
       ) : selectedPerson && (
         <View style={[styles.selectedRow, settings.compactMode && styles.selectedRowCompact]}>
           <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.selectedText, settings.compactMode && styles.textSmall, { flexShrink: 1, marginEnd: 10 }]}>{selectedPerson.name}</Text>
-          <TouchableOpacity onPress={() => { setSelectedPersonId(null); setPersonSearchQuery(''); }}>
-            <Text style={[styles.changeBtnText, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.changeBtn')}</Text>
-          </TouchableOpacity>
+          {!(editModeOrderId || editTaskId) && (
+            <TouchableOpacity onPress={() => { setSelectedPersonId(null); setPersonSearchQuery(''); }}>
+              <Text style={[styles.changeBtnText, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.changeBtn')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
     </View>
@@ -530,7 +626,7 @@ export default function AddOrderScreen() {
       
       <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
         <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.step2Title')}</Text>
-        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact]}>
+        <TouchableOpacity onPress={() => { if (!(editModeOrderId || editTaskId)) setShowDatePicker(true); }} style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact, (editModeOrderId || editTaskId) && { opacity: 0.6 }]}>
           <Text style={[styles.dateDisplayText, settings.compactMode && styles.textSmall]}>{formatDateLabel(targetDate, t, t('modals.daysShort'))}</Text>
           <FontAwesome name="calendar" size={16} color={ACCENT_GOLD} />
         </TouchableOpacity>
@@ -630,7 +726,7 @@ export default function AddOrderScreen() {
 
       <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
         <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('tasks.dateLabel') || 'Date'}</Text>
-          <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact]}>
+          <TouchableOpacity onPress={() => { if (!(editModeOrderId || editTaskId)) setShowDatePicker(true); }} style={[styles.dateDisplay, settings.compactMode && styles.dateDisplayCompact, (editModeOrderId || editTaskId) && { opacity: 0.6 }]}>
             <Text style={[styles.dateDisplayText, settings.compactMode && styles.textSmall]}>
               {formatDateLabel(targetDate, t, t('modals.daysShort'))}
             </Text>
@@ -665,38 +761,66 @@ export default function AddOrderScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
         
         {/* Toggle Mode Segment */}
-        <View style={[styles.modeToggleContainer, settings.compactMode && styles.modeToggleContainerCompact]}>
-          <TouchableOpacity 
-            style={[styles.modeBtn, formMode === 'order' && styles.modeBtnActive]} 
-            onPress={() => setFormMode('order')}
-          >
-            <Text style={[styles.modeBtnText, formMode === 'order' && styles.modeBtnTextActive]}>
-              {t('addOrder.addOrderMode') || 'Add Order'}
+        {!(editModeOrderId || editTaskId) ? (
+          <View style={[styles.modeToggleContainer, settings.compactMode && styles.modeToggleContainerCompact]}>
+            <TouchableOpacity 
+              style={[styles.modeBtn, formMode === 'order' && styles.modeBtnActive]} 
+              onPress={() => setFormMode('order')}
+            >
+              <Text style={[styles.modeBtnText, formMode === 'order' && styles.modeBtnTextActive]}>
+                {t('addOrder.addOrderMode') || 'Add Order'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.modeBtn, formMode === 'task' && styles.modeBtnActive]} 
+              onPress={() => setFormMode('task')}
+            >
+              <Text style={[styles.modeBtnText, formMode === 'task' && styles.modeBtnTextActive]}>
+                {t('addOrder.addTaskMode') || 'Add Task'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.editIndicatorBanner}>
+            <FontAwesome name="pencil" size={16} color={ACCENT_GOLD} style={{ marginRight: 8 }} />
+            <Text style={styles.editIndicatorText}>
+              {formMode === 'order' ? (t('addOrder.editingOrder') || 'Editing Order') : (t('addOrder.editingTask') || 'Editing Task')}
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.modeBtn, formMode === 'task' && styles.modeBtnActive]} 
-            onPress={() => setFormMode('task')}
-          >
-            <Text style={[styles.modeBtnText, formMode === 'task' && styles.modeBtnTextActive]}>
-              {t('addOrder.addTaskMode') || 'Add Task'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+          </View>
+        )}
 
         {formMode === 'order' ? renderOrderForm() : renderTaskForm()}
       </ScrollView>
 
-      <TouchableOpacity 
-          style={[styles.saveButton, settings.compactMode && styles.saveButtonCompact]} 
-          onPress={formMode === 'order' ? handleSaveOrder : handleSaveTask}
-        >
-          <Text style={[styles.saveButtonText, settings.compactMode && styles.textSmall]}>
-            {formMode === 'order' 
-              ? (editModeOrderId ? t('addOrder.saveEdit') : t('addOrder.saveOrder'))
-              : (editTaskId ? t('common.save') : (t('addOrder.addTaskMode') || 'Add Task'))}
-          </Text>
-        </TouchableOpacity>
+      <View style={styles.bottomButtonsContainer}>
+        {(editModeOrderId || editTaskId) && (
+          <TouchableOpacity 
+            style={[styles.cancelButton, settings.compactMode && styles.cancelButtonCompact]} 
+            onPress={() => handleCancelEdit(false)}
+          >
+            <Text style={[styles.cancelButtonText, settings.compactMode && styles.textSmall]}>
+              {t('common.cancel') || 'Cancel Edit'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {(!(editModeOrderId || editTaskId) || hasUnsavedChanges) && (
+          <TouchableOpacity 
+            style={[
+              styles.saveButton, 
+              settings.compactMode && styles.saveButtonCompact, 
+              { flex: 1, margin: 0, marginStart: (editModeOrderId || editTaskId) ? 5 : 0 }
+            ]} 
+            onPress={formMode === 'order' ? handleSaveOrder : handleSaveTask}
+          >
+            <Text style={[styles.saveButtonText, settings.compactMode && styles.textSmall]}>
+              {formMode === 'order' 
+                ? (editModeOrderId ? t('addOrder.saveEdit') : t('addOrder.saveOrder'))
+                : (editTaskId ? t('common.save') : (t('addOrder.addTaskMode') || 'Add Task'))}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {showDatePicker && <DateTimePicker value={targetDate} mode="date" display="default" onChange={onDateChange} />}
       {showTimePicker && <DateTimePicker value={targetTime || new Date()} mode="time" display="default" onChange={onTimeChange} />}
@@ -795,4 +919,43 @@ const styles = StyleSheet.create({
   selectedRowCompact: { padding: 8 },
   textSmall: { fontSize: 14 },
   textExtraSmall: { fontSize: 11 },
+  editIndicatorBanner: {
+    margin: 15,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: ACCENT_GOLD,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editIndicatorText: {
+    color: ACCENT_GOLD,
+    fontWeight: 'bold',
+    fontSize: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  bottomButtonsContainer: {
+    flexDirection: 'row',
+    margin: 15,
+  },
+  cancelButton: {
+    backgroundColor: '#333',
+    padding: 20,
+    alignItems: 'center',
+    borderRadius: 10,
+    flex: 1,
+    marginEnd: 5,
+    borderWidth: 1,
+    borderColor: '#555',
+  },
+  cancelButtonCompact: {
+    padding: 12,
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
 });
