@@ -13,8 +13,6 @@ import { Alert, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSettings } from '@/utils/settings';
 import { useTranslation } from '@/utils/i18n';
-import SmartTextInput from '@/components/SmartTextInput';
-import { COMMON_GROCERY_CORPUS, COMMON_NAMES_CORPUS } from '@/utils/textMatching';
 import { ACCENT_GOLD, LIGHT_GOLD } from '@/constants/Colors';
 
 const InfoIcon = ({ title, message }: { title: string, message: string }) => (
@@ -153,16 +151,6 @@ export default function AddOrderScreen() {
     }
   }, [selectedPersonId, formMode]);
 
-  const personCorpus = useMemo(() => {
-    const dbNames = people?.map(p => p.name) || [];
-    const dbAliases = allAliases?.map(a => a.alias) || [];
-    return [...new Set([...dbNames, ...dbAliases, ...COMMON_NAMES_CORPUS])];
-  }, [people, allAliases]);
-
-  const itemCorpus = useMemo(() => {
-    const dbItems = catalog?.map(i => i.name) || [];
-    return [...new Set([...dbItems, ...COMMON_GROCERY_CORPUS])];
-  }, [catalog]);
 
   const placesCorpus = useMemo(() => {
     return [...new Set(people?.map(p => p.typicalPlace).filter((p): p is string => !!p) || [])];
@@ -391,23 +379,26 @@ export default function AddOrderScreen() {
     const q = searchQuery.toLowerCase().trim();
     const baseList = catalog || [];
 
+    let result = [];
     if (!q) {
       const topIds = new Set(topItems.map(i => i.id));
       const remaining = baseList.filter(i => !topIds.has(i.id));
-      return [...topItems, ...remaining];
+      result = [...topItems, ...remaining];
+    } else {
+      result = baseList.filter((item) => {
+        const aliases = itemAliasesList?.filter(a => a.itemId === item.id).map(a => a.alias) || [];
+        const searchString = [
+          item.name,
+          item.defaultPrice?.toString(),
+          item.source,
+          item.timing,
+          ...aliases
+        ].join(' ').toLowerCase();
+        return searchString.includes(q);
+      });
     }
 
-    return baseList.filter((item) => {
-      const aliases = itemAliasesList?.filter(a => a.itemId === item.id).map(a => a.alias) || [];
-      const searchString = [
-        item.name,
-        item.defaultPrice?.toString(),
-        item.source,
-        item.timing,
-        ...aliases
-      ].join(' ').toLowerCase();
-      return searchString.includes(q);
-    }).slice(0, 10);
+    return result.slice(0, 10);
   }, [catalog, searchQuery, formMode, itemAliasesList, topItems]);
   
   const exactItemMatch = useMemo(() => {
@@ -465,15 +456,12 @@ export default function AddOrderScreen() {
       {!selectedPersonId ? (
         <>
           <View style={[styles.searchRow, settings.compactMode && styles.searchRowCompact]}>
-            <SmartTextInput
-              containerStyle={{ flex: 1 }}
-              style={[styles.input, settings.compactMode && styles.inputCompact, { marginBottom: 0 }]}
+            <TextInput
+              style={[styles.input, settings.compactMode && styles.inputCompact, { marginBottom: 0, flex: 1 }]}
               value={personSearchQuery}
               onChangeText={setPersonSearchQuery}
               placeholder={t('addOrder.searchPersonPlaceholder')}
               placeholderTextColor="#888"
-              corpus={personCorpus}
-              compactMode={settings.compactMode}
             />
             {personSearchQuery.trim().length > 0 && !exactPersonMatch && (
               <TouchableOpacity style={[styles.addButton, settings.compactMode && styles.addButtonCompact]} onPress={() => setPersonModalVisible(true)}>
@@ -560,15 +548,12 @@ export default function AddOrderScreen() {
       <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
         <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.step3Title')}</Text>
         <View style={[styles.searchRow, settings.compactMode && styles.searchRowCompact]}>
-            <SmartTextInput
-              containerStyle={{ flex: 1 }}
-              style={[styles.input, settings.compactMode && styles.inputCompact, { marginBottom: 0 }]}
+            <TextInput
+              style={[styles.input, settings.compactMode && styles.inputCompact, { marginBottom: 0, flex: 1 }]}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder={t('addOrder.searchItemsPlaceholder')}
               placeholderTextColor="#888"
-              corpus={itemCorpus}
-              compactMode={settings.compactMode}
             />
             {searchQuery.trim().length > 0 && !exactItemMatch && (
               <TouchableOpacity style={[styles.addButton, settings.compactMode && styles.addButtonCompact]} onPress={() => setItemModalVisible(true)}>

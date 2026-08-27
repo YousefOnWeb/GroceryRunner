@@ -5,8 +5,6 @@ import { Alert, I18nManager, Keyboard, Modal, ScrollView, StyleSheet, TouchableO
 import DropdownSelect from './DropdownSelect';
 import { useSettings } from '@/utils/settings';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import SmartTextInput from './SmartTextInput';
-import { COMMON_GROCERY_CORPUS } from '@/utils/textMatching';
 import { db } from '@/db';
 import { items } from '@/db/schema';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
@@ -50,7 +48,6 @@ export default function CreateItemModal({
   const [aliases, setAliases] = useState<string[]>(initialAliases);
   const [newAlias, setNewAlias] = useState('');
   const [isCorrection, setIsCorrection] = useState(false);
-  const [itemCorpus, setItemCorpus] = useState<string[]>(COMMON_GROCERY_CORPUS);
   const { settings } = useSettings();
   const { t } = useTranslation();
 
@@ -66,19 +63,8 @@ export default function CreateItemModal({
       setAliases([...initialAliases]);
       setNewAlias('');
       setIsCorrection(false);
-      loadCorpus();
     }
   }, [visible, initialName, initialPrice, initialSource, initialTiming, initialAliases]);
-
-  const loadCorpus = async () => {
-    try {
-      const dbItems = await db.select({ name: items.name }).from(items);
-      const names = dbItems.map(i => i.name);
-      setItemCorpus([...new Set([...names, ...COMMON_GROCERY_CORPUS])]);
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const loadDistinctSources = async () => {
     try {
@@ -141,15 +127,13 @@ export default function CreateItemModal({
           <Text style={[styles.title, settings.compactMode && styles.titleCompact]}>{title}</Text>
 
           <Text style={[styles.label, settings.compactMode && styles.textExtraSmall]}>{t('modals.itemNameLabel')}</Text>
-          <SmartTextInput
+          <TextInput
             style={styles.input}
             value={name}
             onChangeText={setName}
             placeholder={t('modals.itemNamePlaceholder')}
             placeholderTextColor="#888"
             autoFocus={!isEditMode}
-            corpus={itemCorpus}
-            compactMode={settings.compactMode}
           />
 
           <Text style={[styles.label, settings.compactMode && styles.textExtraSmall]}>{t('modals.defaultPriceLabel')}</Text>
