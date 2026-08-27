@@ -156,14 +156,14 @@ export const api = {
     return trimmed;
   },
   
-  addItem: async (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', aliases?: string[]) => {
+  addItem: async (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', aliases?: string[], pricePromptAlways: boolean = false) => {
     const trimmed = name.trim();
     const existing = await db.select().from(items).where(sql`lower(name) = lower(${trimmed})`);
     if (existing.length > 0) return existing;
     
     let finalSource = source ? await api.resolveSourceByNameOrAlias(source) : null;
 
-    const result = await db.insert(items).values({ id: generateId(), name: trimmed, defaultPrice, source: finalSource, timing }).returning();
+    const result = await db.insert(items).values({ id: generateId(), name: trimmed, defaultPrice, source: finalSource, timing, pricePromptAlways }).returning();
     
     if (aliases && aliases.length > 0) {
       const aliasValues = aliases
@@ -373,7 +373,7 @@ export const api = {
     return api.changeBalance(personId, amount, note);
   },
   
-  updateItem: async (id: string, updates: Partial<{ name: string; defaultPrice: number | null; source: string | null; timing: 'Fresh' | 'Anytime', aliases: string[] }>, isCorrection: boolean = false) => {
+  updateItem: async (id: string, updates: Partial<{ name: string; defaultPrice: number | null; source: string | null; timing: 'Fresh' | 'Anytime', aliases: string[], pricePromptAlways: boolean }>, isCorrection: boolean = false) => {
     let finalSource = updates.source !== undefined ? (updates.source ? await api.resolveSourceByNameOrAlias(updates.source) : null) : undefined;
     
     const { aliases, ...itemUpdates } = updates;
@@ -734,6 +734,7 @@ export const api = {
             defaultPrice: i.defaultPrice,
             source: i.source,
             timing: i.timing,
+            pricePromptAlways: i.pricePromptAlways ?? false,
             lastOrderedAt: i.lastOrderedAt || null
           }).where(eq(items.id, existing[0].id));
         }
@@ -745,6 +746,7 @@ export const api = {
           defaultPrice: i.defaultPrice,
           source: i.source,
           timing: i.timing,
+          pricePromptAlways: i.pricePromptAlways ?? false,
           createdAt: i.createdAt,
           lastOrderedAt: i.lastOrderedAt || null
         });

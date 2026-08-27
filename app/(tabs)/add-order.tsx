@@ -10,7 +10,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLiveQuery } from 'drizzle-orm/expo-sqlite';
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, I18nManager, Switch } from 'react-native';
+import { Alert, ScrollView, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard, I18nManager, Switch, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSettings } from '@/utils/settings';
 import { useTranslation } from '@/utils/i18n';
@@ -52,7 +52,9 @@ export default function AddOrderScreen() {
   const [personModalVisible, setPersonModalVisible] = useState(false);
 
   // ORDER STATE
-  const [cart, setCart] = useState<{ item: any; quantity: number }[]>([]);
+  const [cart, setCart] = useState<{ item: any; quantity: number; customPrice?: number | null }[]>([]);
+  const [promptItem, setPromptItem] = useState<any | null>(null);
+  const [promptPrice, setPromptPrice] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [deliveryPlace, setDeliveryPlace] = useState('');
   const [editModeOrderId, setEditModeOrderId] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export default function AddOrderScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   // INITIAL EDIT STATE for change detection
-  const [initialOrderState, setInitialOrderState] = useState<{ cart: { id: string; quantity: number }[], deliveryPlace: string } | null>(null);
+  const [initialOrderState, setInitialOrderState] = useState<{ cart: { id: string; quantity: number; customPrice?: number | null }[], deliveryPlace: string } | null>(null);
   const [initialTaskState, setInitialTaskState] = useState<{ title: string, time: string | null, place: string, requiresMeeting: boolean, personId: string | null, date: string } | null>(null);
 
   const targetDateDb = getLocalDateString(targetDate);
@@ -188,7 +190,7 @@ export default function AddOrderScreen() {
     const itemsForOrder = allOrderItems.filter(oi => oi.orderId === existingOrder.id);
     const newCart = itemsForOrder.map(oi => {
       const itemDef = catalog.find(c => c.id === oi.itemId);
-      return { item: itemDef, quantity: oi.quantity };
+      return { item: itemDef, quantity: oi.quantity, customPrice: oi.unitPrice };
     }).filter(c => c.item);
     
     setCart(newCart);
@@ -198,7 +200,7 @@ export default function AddOrderScreen() {
     }
     
     setInitialOrderState({
-      cart: newCart.map(c => ({ id: c.item!.id, quantity: c.quantity })),
+      cart: newCart.map(c => ({ id: c.item!.id, quantity: c.quantity, customPrice: c.customPrice })),
       deliveryPlace: existingOrder.deliveryPlace || ''
     });
   };
@@ -212,6 +214,15 @@ export default function AddOrderScreen() {
   const selectedPerson = useMemo(() => people?.find(p => p.id === selectedPersonId), [people, selectedPersonId]);
 
   const addToCart = (itemObj: any) => {
+    if (itemObj.pricePromptAlways) {
+      const existing = cart.find((i) => i.item.id === itemObj.id);
+      if (!existing) {
+        setPromptItem(itemObj);
+        setPromptPrice(itemObj.defaultPrice ? String(itemObj.defaultPrice) : '');
+        return;
+      }
+    }
+
     setCart((prev) => {
       const existing = prev.find((i) => i.item.id === itemObj.id);
       if (existing) {
@@ -252,7 +263,7 @@ export default function AddOrderScreen() {
       if (initialOrderState.cart.length !== cart.length) return true;
       for (const initialItem of initialOrderState.cart) {
         const currentItem = cart.find(c => c.item.id === initialItem.id);
-        if (!currentItem || currentItem.quantity !== initialItem.quantity) return true;
+        if (!currentItem || currentItem.quantity !== initialItem.quantity || currentItem.customPrice !== initialItem.customPrice) return true;
       }
       return false;
     } else if (formMode === 'task' && editTaskId && initialTaskState) {
@@ -359,7 +370,7 @@ export default function AddOrderScreen() {
       const orderLines = cart.map((c) => ({
           itemId: c.item.id,
           quantity: c.quantity,
-          unitPrice: c.item.defaultPrice ?? null,
+          unitPrice: c.item.pricePromptAlways ? (c.customPrice ?? null) : (c.item.defaultPrice ?? null),
       }));
 
       if (editModeOrderId) {
@@ -432,13 +443,19 @@ export default function AddOrderScreen() {
     }
   };
 
-  const handleCreateItemSubmit = async (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[]) => {
+  const handleCreateItemSubmit = async (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[], pricePromptAlways: boolean) => {
     setItemModalVisible(false);
     try {
-      const newItem = await api.addItem(name, defaultPrice, source, timing, aliases);
+      const newItem = await api.addItem(name, defaultPrice, source, timing, aliases, pricePromptAlways);
       if (newItem && newItem.length > 0) {
         if (formMode === 'order') {
-          addToCart(newItem[0]);
+          const itemObj = newItem[0];
+          if (itemObj.pricePromptAlways) {
+            setPromptItem(itemObj);
+            setPromptPrice(itemObj.defaultPrice ? String(itemObj.defaultPrice) : '');
+          } else {
+            addToCart(itemObj);
+          }
           setSearchQuery('');
         }
       }
@@ -674,17 +691,34 @@ export default function AddOrderScreen() {
         <View style={[styles.section, settings.compactMode && styles.sectionCompact]}>
           <Text style={[styles.sectionTitle, settings.compactMode && styles.textSmall]}>{t('addOrder.cartTitle')}</Text>
           {cart.map((c) => (
-            <View key={c.item.id} style={[styles.cartRow, settings.compactMode && styles.cartRowCompact]}>
-              <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cartText, settings.compactMode && styles.textSmall, { flexShrink: 1, marginEnd: 10 }]}>{c.item.name}</Text>
-              <View style={styles.stepperContainer}>
-                <TouchableOpacity onPress={() => removeFromCart(c.item.id)} style={styles.stepperBtn}>
-                  <Text style={styles.stepperBtnText}>-</Text>
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{c.quantity}</Text>
-                <TouchableOpacity onPress={() => addToCart(c.item)} style={styles.stepperBtn}>
-                  <Text style={styles.stepperBtnText}>+</Text>
-                </TouchableOpacity>
+            <View key={c.item.id} style={[styles.cartRow, settings.compactMode && styles.cartRowCompact, c.item.pricePromptAlways && { flexDirection: 'column', alignItems: 'stretch' }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.cartText, settings.compactMode && styles.textSmall, { flexShrink: 1, marginEnd: 10 }]}>{c.item.name}</Text>
+                <View style={styles.stepperContainer}>
+                  <TouchableOpacity onPress={() => removeFromCart(c.item.id)} style={styles.stepperBtn}>
+                    <Text style={styles.stepperBtnText}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.stepperValue}>{c.quantity}</Text>
+                  <TouchableOpacity onPress={() => addToCart(c.item)} style={styles.stepperBtn}>
+                    <Text style={styles.stepperBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
+              {c.item.pricePromptAlways && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+                  <Text style={[styles.label, { marginTop: 0, marginBottom: 0, marginRight: 10 }, settings.compactMode && styles.textExtraSmall]}>{t('addOrder.pricePromptLabel') || 'Price:'}</Text>
+                  <TextInput
+                    style={[styles.input, settings.compactMode && styles.inputCompact, { flex: 1, marginBottom: 0, paddingVertical: 6 }]}
+                    value={c.customPrice !== undefined && c.customPrice !== null ? String(c.customPrice) : ''}
+                    onChangeText={(val) => {
+                      setCart(prev => prev.map(i => i.item.id === c.item.id ? { ...i, customPrice: val === '' ? null : parseFloat(val) } : i));
+                    }}
+                    placeholder="0.00"
+                    placeholderTextColor="#888"
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
             </View>
           ))}
         </View>
@@ -791,6 +825,50 @@ export default function AddOrderScreen() {
 
         {formMode === 'order' ? renderOrderForm() : renderTaskForm()}
       </ScrollView>
+
+      <Modal visible={!!promptItem} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.promptDialog}>
+            <Text style={styles.promptTitle}>{t('addOrder.pricePromptTitle') || 'Enter Price'}</Text>
+            <Text style={styles.promptDesc}>{t('addOrder.pricePromptDesc', { name: promptItem?.name || '' }) || `Please enter the price for ${promptItem?.name} for this specific order.`}</Text>
+            <TextInput
+              style={styles.promptInput}
+              value={promptPrice}
+              onChangeText={setPromptPrice}
+              keyboardType="numeric"
+              placeholder="0.00"
+              placeholderTextColor="#888"
+              autoFocus
+            />
+            <View style={[styles.promptBtnRow, { justifyContent: 'space-between' }]}>
+              <TouchableOpacity style={styles.promptCancelBtn} onPress={() => setPromptItem(null)}>
+                <Text style={styles.promptCancelText}>{t('common.cancel') || 'Cancel'}</Text>
+              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity style={[styles.promptSubmitBtn, { backgroundColor: '#444' }]} onPress={() => {
+                  setCart((prev) => [...prev, { item: promptItem, quantity: 1, customPrice: null }]);
+                  setPromptItem(null);
+                  setSearchQuery('');
+                }}>
+                  <Text style={[styles.promptSubmitText, { color: '#ccc' }]}>{t('addOrder.skipPrice') || 'Skip Price'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.promptSubmitBtn, !promptPrice.trim() && { opacity: 0.5 }]} 
+                  disabled={!promptPrice.trim()}
+                  onPress={() => {
+                    const parsed = parseFloat(promptPrice);
+                    const finalPrice = isNaN(parsed) ? null : parsed;
+                    setCart((prev) => [...prev, { item: promptItem, quantity: 1, customPrice: finalPrice }]);
+                    setPromptItem(null);
+                    setSearchQuery('');
+                  }}>
+                  <Text style={styles.promptSubmitText}>{t('common.save') || 'Save'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <View style={styles.bottomButtonsContainer}>
         {(editModeOrderId || editTaskId) && (
@@ -932,30 +1010,94 @@ const styles = StyleSheet.create({
     color: ACCENT_GOLD,
     fontWeight: 'bold',
     fontSize: 16,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   bottomButtonsContainer: {
     flexDirection: 'row',
-    margin: 15,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: '#333',
+    backgroundColor: '#444',
     padding: 20,
     alignItems: 'center',
+    margin: 15,
+    marginEnd: 10,
     borderRadius: 10,
     flex: 1,
-    marginEnd: 5,
-    borderWidth: 1,
-    borderColor: '#555',
   },
   cancelButtonCompact: {
     padding: 12,
+    margin: 8,
+    marginEnd: 4,
   },
   cancelButtonText: {
-    color: '#fff',
+    color: '#ccc',
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  promptDialog: {
+    backgroundColor: '#222',
+    width: '100%',
+    borderRadius: 12,
+    padding: 20,
+    elevation: 5,
+  },
+  promptTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 10,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  promptDesc: {
+    fontSize: 14,
+    color: '#ccc',
+    marginBottom: 20,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  promptInput: {
+    backgroundColor: '#333',
+    color: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#444',
+    marginBottom: 20,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  promptBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  promptCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+  },
+  promptCancelText: {
+    color: '#ccc',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  promptSubmitBtn: {
+    backgroundColor: ACCENT_GOLD,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  promptSubmitText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

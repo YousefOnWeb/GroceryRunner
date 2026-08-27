@@ -1,7 +1,7 @@
 import { Text, TextInput } from '@/components/Themed';
 import { api } from '@/db/api';
 import React, { useEffect, useState } from 'react';
-import { Alert, I18nManager, Keyboard, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, I18nManager, Keyboard, Modal, ScrollView, StyleSheet, TouchableOpacity, View, Switch } from 'react-native';
 import DropdownSelect from './DropdownSelect';
 import { useSettings } from '@/utils/settings';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -22,8 +22,9 @@ interface CreateItemModalProps {
   initialSource?: string | null;
   initialTiming?: 'Fresh' | 'Anytime';
   initialAliases?: string[];
+  initialPricePromptAlways?: boolean;
   onCancel: () => void;
-  onSubmit: (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[]) => void;
+  onSubmit: (name: string, defaultPrice: number | null, source: string | null, timing: 'Fresh' | 'Anytime', isCorrection: boolean, aliases: string[], pricePromptAlways: boolean) => void;
 }
 
 export default function CreateItemModal({
@@ -35,6 +36,7 @@ export default function CreateItemModal({
   initialSource = '',
   initialTiming = 'Fresh',
   initialAliases = EMPTY_ARRAY,
+  initialPricePromptAlways = false,
   onCancel,
   onSubmit,
 }: CreateItemModalProps) {
@@ -48,6 +50,7 @@ export default function CreateItemModal({
   const [aliases, setAliases] = useState<string[]>(initialAliases);
   const [newAlias, setNewAlias] = useState('');
   const [isCorrection, setIsCorrection] = useState(false);
+  const [pricePromptAlways, setPricePromptAlways] = useState(initialPricePromptAlways);
   const { settings } = useSettings();
   const { t } = useTranslation();
 
@@ -63,8 +66,9 @@ export default function CreateItemModal({
       setAliases([...initialAliases]);
       setNewAlias('');
       setIsCorrection(false);
+      setPricePromptAlways(initialPricePromptAlways);
     }
-  }, [visible, initialName, initialPrice, initialSource, initialTiming, initialAliases]);
+  }, [visible, initialName, initialPrice, initialSource, initialTiming, initialAliases, initialPricePromptAlways]);
 
   const loadDistinctSources = async () => {
     try {
@@ -107,7 +111,8 @@ export default function CreateItemModal({
       finalSource,
       timing,
       isCorrection,
-      aliases
+      aliases,
+      pricePromptAlways
     );
   };
 
@@ -136,15 +141,43 @@ export default function CreateItemModal({
             autoFocus={!isEditMode}
           />
 
-          <Text style={[styles.label, settings.compactMode && styles.textExtraSmall]}>{t('modals.defaultPriceLabel')}</Text>
-          <TextInput
-            style={styles.input}
-            value={priceStr}
-            onChangeText={setPriceStr}
-            placeholder="0.00"
-            placeholderTextColor="#888"
-            keyboardType="numeric"
-          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15, marginTop: 5 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={[styles.label, { marginBottom: 0, marginTop: 0 }, settings.compactMode && styles.textExtraSmall]}>
+                {t('modals.pricePromptAlways') || 'Special item (ask price per order)'}
+              </Text>
+              <TouchableOpacity
+                style={{ marginLeft: 6 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                onPress={() => Alert.alert(
+                  t('modals.pricePromptAlways') || 'Special Item',
+                  t('modals.pricePromptAlwaysHelp') || 'Turn this on for items that can vary in weight or price every time they are ordered (e.g. "5 Tomatoes"). You will be asked for the price when you register a new order for this item.'
+                )}
+              >
+                <FontAwesome name="question-circle-o" size={16} color={ACCENT_GOLD} />
+              </TouchableOpacity>
+            </View>
+            <Switch
+              value={pricePromptAlways}
+              onValueChange={setPricePromptAlways}
+              trackColor={{ false: '#444', true: ACCENT_GOLD + '80' }}
+              thumbColor={pricePromptAlways ? ACCENT_GOLD : '#888'}
+            />
+          </View>
+
+          {!pricePromptAlways && (
+            <>
+              <Text style={[styles.label, settings.compactMode && styles.textExtraSmall]}>{t('modals.defaultPriceLabel')}</Text>
+              <TextInput
+                style={styles.input}
+                value={priceStr}
+                onChangeText={setPriceStr}
+                placeholder="0.00"
+                placeholderTextColor="#888"
+                keyboardType="numeric"
+              />
+            </>
+          )}
 
           <Text style={[styles.label, settings.compactMode && styles.textExtraSmall]}>{t('modals.usualSourceLabel')}</Text>
           <TextInput

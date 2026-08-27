@@ -51,6 +51,12 @@ export const db = drizzle(expoDb, { schema });
       // Column probably already exists
     }
 
+    try {
+      await db.run(sql`ALTER TABLE items ADD COLUMN pricePromptAlways INTEGER DEFAULT 0 NOT NULL`);
+    } catch (e) {
+      // Column probably already exists
+    }
+
     // resilient check for tasks table entirely
     try {
       await db.run(sql`

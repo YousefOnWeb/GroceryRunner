@@ -21,6 +21,7 @@ export const items = sqliteTable('items', {
   defaultPrice: real('defaultPrice'),
   source: text('source'),
   timing: text('timing', { enum: ['Fresh', 'Anytime'] }).notNull().default('Fresh'),
+  pricePromptAlways: integer('pricePromptAlways', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('createdAt').notNull().default(sql`CURRENT_TIMESTAMP`),
   lastOrderedAt: text('lastOrderedAt'),
 });
