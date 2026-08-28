@@ -22,6 +22,7 @@ interface EditState {
   personId: string;
   name: string;
   typicalPlace: string | null;
+  primaryPhone: string | null;
   aliases: string[];
   balance: number;
 }
@@ -123,6 +124,7 @@ export default function PeopleScreen() {
       personId: person.id,
       name: person.name,
       typicalPlace: person.typicalPlace,
+      primaryPhone: person.primaryPhone,
       aliases,
       balance: person.balance,
     });
@@ -469,6 +471,7 @@ export default function PeopleScreen() {
           personId={editState.personId}
           initialName={editState.name}
           initialPlace={editState.typicalPlace}
+          initialPrimaryPhone={editState.primaryPhone}
           initialAliases={editState.aliases}
           initialBalance={editState.balance}
           onCancel={() => { setEditModalVisible(false); setEditState(null); }}

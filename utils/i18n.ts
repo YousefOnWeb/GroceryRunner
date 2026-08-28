@@ -311,6 +311,7 @@ export const translations = {
       importFailedMsg: 'An error occurred while importing the file.'
     },
     modals: {
+      currentPhone: 'Current: {phone}',
       phoneLabel: 'Primary Phone Number (Optional)',
       phonePlaceholder: 'e.g. +20123456789',
       createItemTitle: 'Create New Item',
@@ -710,6 +711,7 @@ export const translations = {
       importFailedMsg: 'حدث خطأ أثناء استيراد الملف.'
     },
     modals: {
+      currentPhone: 'الحالي: {phone}',
       phoneLabel: 'رقم الهاتف الأساسي (اختياري)',
       phonePlaceholder: 'مثال: +20123456789',
       createItemTitle: 'إنشاء عنصر جديد',

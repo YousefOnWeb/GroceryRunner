@@ -1,7 +1,7 @@
 import { Text, TextInput } from '@/components/Themed';
 import { api } from '@/db/api';
 import React, { useEffect, useState } from 'react';
-import { Alert, I18nManager, Keyboard, Modal, ScrollView, StyleSheet, TouchableOpacity, View, Switch } from 'react-native';
+import { Alert, I18nManager, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View, Switch } from 'react-native';
 import DropdownSelect from './DropdownSelect';
 import { useSettings } from '@/utils/settings';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -132,9 +132,13 @@ export default function CreateItemModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.overlay}>
-        <ScrollView style={styles.dialog} contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.title, settings.compactMode && styles.titleCompact]}>{title}</Text>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{ flex: 1 }}
+      >
+        <View style={styles.overlay}>
+          <ScrollView style={styles.dialog} contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
+            <Text style={[styles.title, settings.compactMode && styles.titleCompact]}>{title}</Text>
 
           <Text style={[styles.label, settings.compactMode && styles.textExtraSmall]}>{t('modals.itemNameLabel')}</Text>
           <TextInput
@@ -313,6 +317,7 @@ export default function CreateItemModal({
           </View>
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -331,7 +336,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     elevation: 5,
-    maxHeight: '90%',
+    maxHeight: '100%',
   },
   dialogContent: {
     flexGrow: 1,

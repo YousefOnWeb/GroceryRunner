@@ -1,7 +1,7 @@
 import { Text, TextInput } from '@/components/Themed';
 import { api } from '@/db/api';
 import React, { useEffect, useState } from 'react';
-import { Alert, I18nManager, Keyboard, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, I18nManager, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSettings } from '@/utils/settings';
@@ -187,9 +187,13 @@ export default function PersonModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.overlay}>
-        <ScrollView style={styles.dialog} contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.title, settings.compactMode && styles.titleCompact]}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={{ flex: 1 }}
+      >
+        <View style={styles.overlay}>
+          <ScrollView style={styles.dialog} contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
+            <Text style={[styles.title, settings.compactMode && styles.titleCompact]}>
             {mode === 'create' ? t('modals.addNewPerson') : t('modals.editPerson', { name: initialName })}
           </Text>
 
@@ -237,16 +241,21 @@ export default function PersonModal({
           )}
 
           {/* Primary Phone */}
-          <Text style={styles.label}>{t('modals.phoneLabel') || 'Primary Phone Number (Optional)'}</Text>
+          <Text style={styles.label}>
+            {t('modals.phoneLabel') || 'Primary Phone Number (Optional)'}
+            {mode === 'edit' && initialPrimaryPhone ? ` - ${t('modals.currentPhone', { phone: initialPrimaryPhone })}` : ''}
+          </Text>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-            <TextInput
-              style={[styles.input, { flex: 1, marginBottom: 5 }]}
-              value={primaryPhone}
-              onChangeText={setPrimaryPhone}
-              placeholder={t('modals.phonePlaceholder') || 'e.g. +20123456789'}
-              placeholderTextColor="#888"
-              keyboardType="phone-pad"
-            />
+            <View style={{ flex: 1, direction: 'ltr' }}>
+              <TextInput
+                style={[styles.input, { width: '100%', marginBottom: 5, textAlign: 'left', writingDirection: 'ltr' }]}
+                value={primaryPhone}
+                onChangeText={setPrimaryPhone}
+                placeholder={t('modals.phonePlaceholder') || 'e.g. +20123456789'}
+                placeholderTextColor="#888"
+                keyboardType="phone-pad"
+              />
+            </View>
             <TouchableOpacity onPress={handlePickContact} style={styles.pickContactBtn}>
               <FontAwesome name="address-book" size={24} color="#1a1a1a" />
             </TouchableOpacity>
@@ -366,6 +375,7 @@ export default function PersonModal({
           </View>
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
 
       <CreditLogModal 
         visible={logVisible} 
@@ -410,7 +420,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     elevation: 5,
-    maxHeight: '90%',
+    maxHeight: '100%',
   },
   dialogContent: {
     flexGrow: 1,
