@@ -362,13 +362,13 @@ export default function StatsScreen() {
           <View>
             <Text style={[styles.sectionTitle, settings.compactMode && styles.sectionTitleCompact]}>{t('stats.appStatsTitle')}</Text>
             <View style={[styles.statsCard, settings.compactMode && styles.statsCardCompact]}>
-              <Text style={[styles.statText, settings.compactMode && styles.textSmall]}>{t('stats.totalHandled')} <Text style={[styles.highlight, settings.compactMode && styles.highlightCompact]}>${stats.totalSpent.toFixed(2)}</Text></Text>
+              <Text style={[styles.statText, settings.compactMode && styles.textSmall]}>{t('stats.totalHandled')} <Text style={[styles.highlight, settings.compactMode && styles.highlightCompact]}>{t('common.currencyFormat', { amount: stats.totalSpent.toFixed(2) })}</Text></Text>
               <Text style={[styles.statText, settings.compactMode && styles.textSmall]}>{t('stats.totalOrders')} <Text style={[styles.highlight, settings.compactMode && styles.highlightCompact]}>{stats.totalOrders}</Text></Text>
               
               <Text style={[styles.subTitle, settings.compactMode && styles.subTitleCompact]}>{t('stats.topSpenders')}</Text>
               {stats.topSpenders.map((p, idx) => (
                 <Text key={idx} style={[styles.listItem, settings.compactMode && styles.textSmall]}>
-                  {isRTL ? '\u2066' : ''}{idx + 1}. {p.name} - ${p.total.toFixed(2)}{isRTL ? '\u2069' : ''}
+                  {isRTL ? '\u2066' : ''}{idx + 1}. {p.name} - {t('common.currencyFormat', { amount: p.total.toFixed(2) })}{isRTL ? '\u2069' : ''}
                 </Text>
               ))}
 
@@ -714,7 +714,7 @@ const ItemCard = React.memo(function ItemCard({
               {item.description}
             </Text>
           )}
-          <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsPrice')} {item.defaultPrice ? `$${item.defaultPrice}` : t('stats.na')}</Text>
+          <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsPrice')} {item.defaultPrice ? t('common.currencyFormat', { amount: item.defaultPrice }) : t('stats.na')}</Text>
           <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsSource')} {item.source || t('stats.na')}</Text>
           <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsTiming')} {item.timing || t('stats.na')}</Text>
           <Text style={[styles.detailText, compactMode && styles.textExtraSmall]}>{t('stats.detailsLastOrdered')} {item.lastOrderedAt ? formatDateTime(item.lastOrderedAt, language) : t('stats.na')}</Text>

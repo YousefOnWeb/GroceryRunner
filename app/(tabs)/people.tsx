@@ -191,7 +191,7 @@ export default function PeopleScreen() {
           const weekdays = t('people.daysShort').split(',');
           const day = weekdays[d.getDay()];
           const dateStr = `${day}, ${d.toLocaleDateString(isRTL ? 'ar' : 'en-US')}`;
-          const amountStr = tx.amount >= 0 ? `+$${tx.amount.toFixed(2)}` : `-$${Math.abs(tx.amount).toFixed(2)}`;
+          const amountStr = tx.amount >= 0 ? `+${t('common.currencyFormat', { amount: tx.amount.toFixed(2) })}` : `-${t('common.currencyFormat', { amount: Math.abs(tx.amount).toFixed(2) })}`;
           text += `     • ${dateStr}: ${amountStr} (${tx.note || tx.type})\n`;
         });
         if (personTx.length > 5) {
@@ -257,8 +257,8 @@ export default function PeopleScreen() {
     if (!p1 || !p2) return { entityA: null, entityB: null };
     
     return {
-      entityA: { id: p1.id, name: p1.name, details: `Balance: $${p1.balance.toFixed(2)}` },
-      entityB: { id: p2.id, name: p2.name, details: `Balance: $${p2.balance.toFixed(2)}` }
+      entityA: { id: p1.id, name: p1.name, details: `Balance: ${t('common.currencyFormat', { amount: p1.balance.toFixed(2) })}` },
+      entityB: { id: p2.id, name: p2.name, details: `Balance: ${t('common.currencyFormat', { amount: p2.balance.toFixed(2) })}` }
     };
   };
 

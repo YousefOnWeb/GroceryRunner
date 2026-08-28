@@ -22,7 +22,7 @@ import { ACCENT_GOLD, LIGHT_GOLD, LIQUID_GOLD_STOPS, LIQUID_SILVER_STOPS, METALL
 // -----------------------
 import { useIsFocused } from '@react-navigation/native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, I18nManager, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { Alert, FlatList, I18nManager, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, TextInput, Linking } from 'react-native';
 
 const HighlightText = ({ text, highlight, style, numberOfLines, ellipsizeMode }: { text: string; highlight?: string; style?: any; numberOfLines?: number; ellipsizeMode?: any }) => {
   if (!highlight || !highlight.trim()) {
@@ -740,7 +740,7 @@ export default function TheRunScreen() {
               >
                 <Text style={[styles.shoppingListTitle, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('run.shoppingList')}</Text>
                 {item.listTotal > 0 && (
-                  <Text style={[styles.shoppingListTotal, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>${item.listTotal.toFixed(2)}</Text>
+                  <Text style={[styles.shoppingListTotal, settings.compactMode && styles.sectionTitleCompact, { marginBottom: 0 }]}>{t('common.currencyFormat', { amount: item.listTotal.toFixed(2) })}</Text>
                 )}
               </LinearGradient>
             </LinearGradient>
@@ -839,13 +839,24 @@ export default function TheRunScreen() {
                     style={[styles.personHeaderText, settings.compactMode && styles.personHeaderTextCompact, { flex: 1 }]}
                   />
                 </View>
-                <TouchableOpacity onPress={() => handlePayAmountRequest({ id: '', personId: item.person.id, total: 0, personName: item.person.name, targetDate: '', currentBalance: item.person.balance })} style={styles.paymentShadow}>
-                  <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
-                    <LinearGradient colors={LIQUID_GOLD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.paymentBtnInner}>
-                      <Text style={[styles.markAllPaidText, settings.compactMode && { fontSize: 10 }]}>{t('run.receivePaymentTitle')}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {item.person.primaryPhone && (
+                    <TouchableOpacity onPress={() => Linking.openURL(`tel:${item.person.primaryPhone}`)} style={[styles.paymentShadow, { marginEnd: 8 }]}>
+                      <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
+                        <LinearGradient colors={LIQUID_GOLD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.paymentBtnInner, { minHeight: settings.compactMode ? 22 : 26 }]}>
+                          <FontAwesome name="phone" size={settings.compactMode ? 14 : 16} color="#000" style={{ marginHorizontal: 4 }} />
+                        </LinearGradient>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={() => handlePayAmountRequest({ id: '', personId: item.person.id, total: 0, personName: item.person.name, targetDate: '', currentBalance: item.person.balance })} style={styles.paymentShadow}>
+                    <LinearGradient colors={METALLIC_BEVEL} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={styles.paymentBtnOuter}>
+                      <LinearGradient colors={LIQUID_GOLD_STOPS} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.paymentBtnInner, { minHeight: settings.compactMode ? 22 : 26 }]}>
+                        <Text style={[styles.markAllPaidText, settings.compactMode && { fontSize: 10 }]}>{t('run.receivePaymentTitle')}</Text>
+                      </LinearGradient>
                     </LinearGradient>
-                  </LinearGradient>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           );
@@ -1060,7 +1071,7 @@ export default function TheRunScreen() {
         text += `\n📍 ${source}:\n`;
         itemsList.forEach(ag => {
           text += `  - ${ag.totalQuantity}x ${ag.item.name}`;
-          if (ag.totalCost > 0) text += ` ($${ag.totalCost.toFixed(2)})`;
+          if (ag.totalCost > 0) text += ` (${t('common.currencyFormat', { amount: ag.totalCost.toFixed(2) })})`;
           else text += ` (Price TBD)`;
           text += `\n`;
         });
@@ -1076,14 +1087,14 @@ export default function TheRunScreen() {
         text += `  👤 ${po.person.name}:\n`;
         if (po.items.length > 0) {
           po.items.forEach((i: any) => {
-            const cost = i.unitPrice !== null ? `$${(i.unitPrice * i.quantity).toFixed(2)}` : 'TBD';
+            const cost = i.unitPrice !== null ? t('common.currencyFormat', { amount: (i.unitPrice * i.quantity).toFixed(2) }) : 'TBD';
             text += `    • ${i.quantity}x ${i.itemDef?.name} - ${cost}\n`;
           });
-          text += `    Total: ${po.totalCost === 0 && po.hasUnknownPriceItems ? 'TBD' : `$${po.totalCost.toFixed(2)}${po.hasUnknownPriceItems ? ' + TBD' : ''}`}\n`;
+          text += `    Total: ${po.totalCost === 0 && po.hasUnknownPriceItems ? 'TBD' : `${t('common.currencyFormat', { amount: po.totalCost.toFixed(2) })}${po.hasUnknownPriceItems ? ' + TBD' : ''}`}\n`;
 
           let balText = '';
-          if (po.person.balance > 0) balText = `You are owed: $${Math.abs(po.person.balance).toFixed(2)}`;
-          else if (po.person.balance < 0) balText = `You owe them: $${Math.abs(po.person.balance).toFixed(2)}`;
+          if (po.person.balance > 0) balText = `You are owed: ${t('common.currencyFormat', { amount: Math.abs(po.person.balance).toFixed(2) })}`;
+          else if (po.person.balance < 0) balText = `You owe them: ${t('common.currencyFormat', { amount: Math.abs(po.person.balance).toFixed(2) })}`;
           else balText = po.hasUnknownPriceItems ? 'Awaiting Prices' : 'Settled';
 
           text += `    Balance: ${balText}\n`;
@@ -1688,7 +1699,7 @@ const styles = StyleSheet.create({
   sourceTitle: { fontSize: 22, color: ACCENT_GOLD, fontWeight: 'bold' },
   sourceCost: { fontSize: 22, fontWeight: 'bold', color: ACCENT_GOLD },
   itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  itemPriceContainer: { width: 60, alignItems: 'flex-end' },
+  itemPriceContainer: { alignItems: 'flex-end', justifyContent: 'center' },
   itemText: { fontSize: 16, color: '#fff' },
   itemPrice: { fontSize: 14, color: '#aaa', fontWeight: '500' },
   itemTextCrossed: { textDecorationLine: 'line-through', color: '#666' },
@@ -2047,7 +2058,7 @@ const OrderItemRow = React.memo(function OrderItemRow({
         {item.unitPrice === null ? (
           <Text style={[styles.itemPrice, { color: '#ffeb3b', fontStyle: 'italic' }, compactMode && styles.textExtraSmall]}>{t('common.priceTBD')}</Text>
         ) : itemCost > 0 ? (
-          <Text style={[styles.itemPrice, compactMode && styles.textExtraSmall]}>${itemCost.toFixed(2)}</Text>
+          <Text style={[styles.itemPrice, compactMode && styles.textExtraSmall]}>{t('common.currencyFormat', { amount: itemCost.toFixed(2) })}</Text>
         ) : null}
       </View>
     </View>
@@ -2115,7 +2126,7 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
                 )}
                 <View style={{ flex: 1, alignItems: 'flex-start', overflow: 'hidden', paddingEnd: 8, gap: 2 }}>
                   <Text style={[styles.personTotal, compactMode && styles.personTotalCompact, { textAlign: isRTL ? 'right' : 'left' }]}>
-                    {po.totalCost === 0 && po.hasUnknownPriceItems ? t('common.priceTBD') : `$${po.totalCost.toFixed(2)}${po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}`}
+                    {po.totalCost === 0 && po.hasUnknownPriceItems ? t('common.priceTBD') : `${t('common.currencyFormat', { amount: po.totalCost.toFixed(2) })}${po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}`}
                   </Text>
                   <View style={[styles.statusContainer, compactMode && { height: 16 }]}>
                     <Text style={[styles.statusText, po.unpaidCost > 0 ? styles.statusUnsettled : styles.statusSettled, compactMode && styles.textExtraSmall, { textAlign: isRTL ? 'right' : 'left' }]}>
@@ -2187,7 +2198,7 @@ const PersonOrderCard = React.memo(function PersonOrderCard({
             </View>
             <View style={styles.balanceValueRow}>
               <Text style={[po.person.balance < 0 ? styles.debt : po.person.balance > 0 ? styles.credit : po.hasUnknownPriceItems ? styles.pending : styles.settled, compactMode && styles.personTotalCompact]}>
-                ${Math.abs(po.person.balance).toFixed(2)}
+                {t('common.currencyFormat', { amount: Math.abs(po.person.balance).toFixed(2) })}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <TouchableOpacity
@@ -2248,6 +2259,7 @@ const ShoppingListItemRow = React.memo(function ShoppingListItemRow({
   isRTL,
   onToggleCheck,
 }: ShoppingListItemRowProps) {
+  const { t } = useTranslation();
   return (
     <TouchableOpacity
       style={[styles.itemRow, compactMode && styles.itemRowCompact]}
@@ -2291,7 +2303,7 @@ const ShoppingListItemRow = React.memo(function ShoppingListItemRow({
             compactMode && styles.textSmall,
             isChecked && styles.itemTextCrossed,
           ]}>
-            ${ag.totalCost.toFixed(2)}
+            {t('common.currencyFormat', { amount: ag.totalCost.toFixed(2) })}
           </Text>
         )}
       </View>
@@ -2329,6 +2341,7 @@ const SourceGroupCard = React.memo(function SourceGroupCard({
   onToggleCollapse,
   onToggleCheck,
 }: SourceGroupCardProps) {
+  const { t } = useTranslation();
   return (
     <View style={styles.cardShadow}>
       <View style={[styles.sourceGroup, compactMode && styles.sourceGroupCompact]}>
@@ -2350,7 +2363,7 @@ const SourceGroupCard = React.memo(function SourceGroupCard({
               📍 {source}
             </Text>
           </View>
-          <Text style={[styles.sourceCost, compactMode && styles.sourceTitleCompact]}>${sourceTotal.toFixed(2)}</Text>
+          <Text style={[styles.sourceCost, compactMode && styles.sourceTitleCompact]}>{t('common.currencyFormat', { amount: sourceTotal.toFixed(2) })}</Text>
         </TouchableOpacity>
 
         {!isCollapsed && itemsList.map((ag) => (

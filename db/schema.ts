@@ -6,8 +6,10 @@ export const persons = sqliteTable('persons', {
   name: text('name').notNull(),
   balance: real('balance').notNull().default(0),
   typicalPlace: text('typicalPlace'),
+  primaryPhone: text('primaryPhone'),
   createdAt: text('createdAt').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
 
 export const personAliases = sqliteTable('personAliases', {
   id: text('id').primaryKey(),

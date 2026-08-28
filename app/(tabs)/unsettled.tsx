@@ -443,7 +443,7 @@ export default function UnsettledScreen() {
               {t('unsettled.unsettledOrdersCount', { count })}
             </Text>
             <Text style={[styles.groupTotalCost, settings.compactMode && styles.groupTitleCompact]}>
-              ${total.toFixed(2)}
+              {t('common.currencyFormat', { amount: total.toFixed(2) })}
             </Text>
           </View>
         </View>
@@ -787,7 +787,7 @@ const OrderItemRow = React.memo(function OrderItemRow({
         {item.unitPrice === null ? (
           <Text style={[styles.itemPrice, { color: '#ffeb3b', fontStyle: 'italic' }, compactMode && styles.textExtraSmall]}>{t('common.priceTBD')}</Text>
         ) : itemCost > 0 ? (
-          <Text style={[styles.itemPrice, compactMode && styles.textExtraSmall]}>${itemCost.toFixed(2)}</Text>
+          <Text style={[styles.itemPrice, compactMode && styles.textExtraSmall]}>{t('common.currencyFormat', { amount: itemCost.toFixed(2) })}</Text>
         ) : null}
       </RNView>
     </RNView>
@@ -900,7 +900,7 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
                   compactMode && styles.personTotalCompact,
                   { textAlign: isRTL ? 'left' : 'right' }
                 ]}>
-                  {po.totalCost === 0 && po.hasUnknownPriceItems ? t('common.priceTBD') : `$${po.totalCost.toFixed(2)}${po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}`}
+                  {po.totalCost === 0 && po.hasUnknownPriceItems ? t('common.priceTBD') : `${t('common.currencyFormat', { amount: po.totalCost.toFixed(2) })}${po.hasUnknownPriceItems ? ` + ${t('common.priceTBD')}` : ''}`}
                 </Text>
               </RNView>
               <RNView style={[styles.statusContainer, compactMode && { height: 16 }]}>
@@ -955,7 +955,7 @@ const UnsettledOrderCard = React.memo(function UnsettledOrderCard({
             </RNView>
             <RNView style={styles.balanceValueRow}>
               <Text style={[po.person.balance < 0 ? styles.debt : po.person.balance > 0 ? styles.credit : po.hasUnknownPriceItems ? styles.pending : styles.settled, compactMode && styles.personTotalCompact]}>
-                ${Math.abs(po.person.balance).toFixed(2)}
+                {t('common.currencyFormat', { amount: Math.abs(po.person.balance).toFixed(2) })}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <TouchableOpacity
@@ -1232,7 +1232,7 @@ const styles = StyleSheet.create({
   quantityTextCompact: { fontSize: 11, lineHeight: 11 },
   quantityBadgeCrossed: { opacity: 0.7 },
   quantityTextCrossed: { color: '#666', textDecorationLine: 'line-through' },
-  itemPriceContainer: { width: 60, alignItems: 'flex-end' },
+  itemPriceContainer: { alignItems: 'flex-end', justifyContent: 'center' },
   itemPrice: { fontSize: 14, color: '#aaa', fontWeight: '500' },
   orderCreatedAt: { color: '#888', fontSize: 12 },
   orderCreatedAtCompact: { fontSize: 10 },

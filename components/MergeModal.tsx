@@ -8,7 +8,7 @@ import { Text, View } from './Themed';
 interface Entity {
   id: string;
   name: string;
-  details?: string; // e.g. "Balance: $50" or "Source: Supermarket"
+  details?: string; // e.g. "Balance: EGP 50" or "Source: Supermarket"
 }
 
 interface MergeModalProps {

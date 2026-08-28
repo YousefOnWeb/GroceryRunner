@@ -2,6 +2,7 @@ import { Text, TextInput } from '@/components/Themed';
 import { api } from '@/db/api';
 import React, { useEffect, useState } from 'react';
 import { Alert, I18nManager, Keyboard, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import * as Contacts from 'expo-contacts';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSettings } from '@/utils/settings';
 import CreditLogModal from './CreditLogModal';
@@ -18,6 +19,7 @@ interface PersonModalProps {
   personId?: string;
   initialName?: string;
   initialPlace?: string | null;
+  initialPrimaryPhone?: string | null;
   initialAliases?: string[];
   initialBalance?: number;
   onCancel: () => void;
@@ -30,6 +32,7 @@ export default function PersonModal({
   personId,
   initialName = '',
   initialPlace = '',
+  initialPrimaryPhone = '',
   initialAliases = [],
   initialBalance = 0,
   onCancel,
@@ -37,6 +40,7 @@ export default function PersonModal({
 }: PersonModalProps) {
   const [name, setName] = useState(initialName);
   const [place, setPlace] = useState(initialPlace || '');
+  const [primaryPhone, setPrimaryPhone] = useState(initialPrimaryPhone || '');
   const [aliases, setAliases] = useState<string[]>(initialAliases);
   const [newAlias, setNewAlias] = useState('');
   const [placeSuggestions, setPlaceSuggestions] = useState<string[]>([]);
@@ -57,6 +61,7 @@ export default function PersonModal({
     if (visible) {
       setName(initialName);
       setPlace(initialPlace || '');
+      setPrimaryPhone(initialPrimaryPhone || '');
       setAliases([...initialAliases]);
       setNewAlias('');
       setAdjustType(null);
@@ -64,7 +69,7 @@ export default function PersonModal({
       setAdjustNote('');
       loadPlaceSuggestions();
     }
-  }, [visible, initialName, initialPlace, initialAliasesKey]);
+  }, [visible, initialName, initialPlace, initialPrimaryPhone, initialAliasesKey, initialBalance]);
 
   const loadPlaceSuggestions = async () => {
     try {
@@ -72,6 +77,23 @@ export default function PersonModal({
       setPlaceSuggestions(places);
     } catch (e) {
       console.error('Error loading places:', e);
+    }
+  };
+
+  const handlePickContact = async () => {
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(t('common.error'), t('modals.permissionDenied'));
+        return;
+      }
+      
+      const contact = await Contacts.presentContactPickerAsync();
+      if (contact && contact.phoneNumbers && contact.phoneNumbers.length > 0) {
+        setPrimaryPhone(contact.phoneNumbers[0].number || '');
+      }
+    } catch (err) {
+      console.warn('Failed to pick contact', err);
     }
   };
 
@@ -106,13 +128,14 @@ export default function PersonModal({
 
     try {
       if (mode === 'create') {
-        const result = await api.addPerson(name, place || null, aliases);
+        const result = await api.addPerson(name, place || null, primaryPhone || null, aliases);
         Alert.alert(t('common.success'), t('modals.personAdded', { name }));
         onDone(result[0].id);
       } else if (mode === 'edit' && personId) {
         await api.updatePerson(personId, {
           name: name.trim(),
           typicalPlace: place || null,
+          primaryPhone: primaryPhone || null,
           aliases,
         });
 
@@ -213,6 +236,22 @@ export default function PersonModal({
             </View>
           )}
 
+          {/* Primary Phone */}
+          <Text style={styles.label}>{t('modals.phoneLabel') || 'Primary Phone Number (Optional)'}</Text>
+          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+            <TextInput
+              style={[styles.input, { flex: 1, marginBottom: 5 }]}
+              value={primaryPhone}
+              onChangeText={setPrimaryPhone}
+              placeholder={t('modals.phonePlaceholder') || 'e.g. +20123456789'}
+              placeholderTextColor="#888"
+              keyboardType="phone-pad"
+            />
+            <TouchableOpacity onPress={handlePickContact} style={styles.pickContactBtn}>
+              <FontAwesome name="address-book" size={24} color="#1a1a1a" />
+            </TouchableOpacity>
+          </View>
+
           {/* Nicknames/Aliases */}
           <Text style={styles.label}>{t('modals.aliasesLabelPerson')}</Text>
           <Text style={styles.hint}>
@@ -250,7 +289,7 @@ export default function PersonModal({
               <View style={styles.divider} />
               <Text style={styles.label}>{t('modals.adjustCredit')}</Text>
               <Text style={styles.hint}>
-                {initialBalance === 0 ? t('modals.currentBalance', { balance: '$0.00' }) : (initialBalance < 0 ? t('people.yourMoneyWithThem', { amount: Math.abs(initialBalance).toFixed(2) }) : t('people.theirMoneyWithYou', { amount: Math.abs(initialBalance).toFixed(2) }))}
+                {initialBalance === 0 ? t('modals.currentBalance', { balance: t('common.currencyFormat', { amount: '0.00' }) }) : (initialBalance < 0 ? t('people.yourMoneyWithThem', { amount: Math.abs(initialBalance).toFixed(2) }) : t('people.theirMoneyWithYou', { amount: Math.abs(initialBalance).toFixed(2) }))}
               </Text>
               <View style={styles.adjustRow}>
                 <TouchableOpacity
@@ -451,6 +490,15 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT_GOLD,
     padding: 12,
     borderRadius: 8,
+  },
+  pickContactBtn: {
+    backgroundColor: ACCENT_GOLD,
+    height: 48,
+    paddingHorizontal: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    marginBottom: 5,
   },
   divider: {
     height: 1,

@@ -55,15 +55,15 @@ export default function SettleUpModal({ visible, personId, personName, currentBa
     if (parsedAmount <= 0) return null;
     
     let baseMsg = isRTL 
-      ? `استلام مبلغ $${parsedAmount.toFixed(2)} من ${personName}. `
-      : `Receiving $${parsedAmount.toFixed(2)} from ${personName}. `;
+      ? `استلام مبلغ ${parsedAmount.toFixed(2)} جنيه من ${personName}. `
+      : `Receiving EGP ${parsedAmount.toFixed(2)} from ${personName}. `;
       
     if (Math.abs(newBalance) < 0.01) {
-      baseMsg += isRTL ? 'سيتم تصفية رصيدها/رصيده (0.00$).' : 'Their new balance will be settled ($0.00).';
-    } else if (isCredit) {
-      baseMsg += isRTL ? `سيصبح رصيدها/رصيده الجديد $${absNewBalance} (لها/له).` : `Their new balance will be $${absNewBalance} (Credit).`;
+      baseMsg += isRTL ? 'سيتم تصفية رصيدها/رصيده (0.00 جنيه).' : 'Their new balance will be settled (EGP 0.00).';
+    } else if (newBalance > 0) {
+      baseMsg += isRTL ? `سيصبح رصيدها/رصيده الجديد ${absNewBalance} جنيه (لها/له).` : `Their new balance will be EGP ${absNewBalance} (Credit).`;
     } else {
-      baseMsg += isRTL ? `سيصبح رصيدها/رصيده الجديد $${absNewBalance} (دين).` : `Their new balance will be $${absNewBalance} (Debt).`;
+      baseMsg += isRTL ? `سيصبح رصيدها/رصيده الجديد ${absNewBalance} جنيه (دين).` : `Their new balance will be EGP ${absNewBalance} (Debt).`;
     }
     
     return (
@@ -104,7 +104,7 @@ export default function SettleUpModal({ visible, personId, personName, currentBa
             {tAmountLabel}
           </Text>
           <View style={styles.inputContainer}>
-            <Text style={styles.currencySymbol}>$</Text>
+            <Text style={[styles.currencySymbol, isRTL && { fontSize: 16 }]}>{isRTL ? 'جنيه' : 'EGP'}</Text>
             <TextInput
               style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }, settings.compactMode && styles.inputCompact]}
               value={amountStr}

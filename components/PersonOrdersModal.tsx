@@ -231,7 +231,7 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
                       </Text>
                     </View>
                     <Text style={[styles.orderTotal, settings.compactMode && styles.textSmall]}>
-                      ${order.totalCost.toFixed(2)}{order.hasUnknownPrices ? '+' : ''}
+                      {t('common.currencyFormat', { amount: order.totalCost.toFixed(2) })}{order.hasUnknownPrices ? '+' : ''}
                     </Text>
                   </View>
                 </View>
@@ -258,7 +258,7 @@ export default function PersonOrdersModal({ visible, personId, personName, onClo
                       </View>
                       <View style={[styles.priceBadge, { marginStart: 10 }]}>
                         <Text style={[styles.itemPrice, settings.compactMode && styles.textExtraSmall]}>
-                          {item.unitPrice !== null ? `$${(item.unitPrice * item.quantity).toFixed(2)}` : t('common.priceTBD')}
+                          {item.unitPrice !== null ? t('common.currencyFormat', { amount: (item.unitPrice * item.quantity).toFixed(2) }) : t('common.priceTBD')}
                         </Text>
                       </View>
                     </View>

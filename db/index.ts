@@ -22,6 +22,10 @@ export const db = drizzle(expoDb, { schema });
       // Column probably already exists, ignore error
     }
 
+    try {
+      await db.run(sql`ALTER TABLE persons ADD COLUMN primaryPhone TEXT`);
+    } catch (e) {}
+
     // resilient check for 'createdAt' in various tables
     const tablesToUpdate = ['persons', 'items', 'placeAliases', 'sourceAliases'];
     for (const table of tablesToUpdate) {

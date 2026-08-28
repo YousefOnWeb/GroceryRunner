@@ -9,7 +9,7 @@ export const CURRENT_SCHEMA_VERSION = 3;
 import { scheduleTaskNotification, cancelTaskNotification } from '../utils/notifications';
 
 export const api = {
-  addPerson: async (name: string, typicalPlace?: string | null, aliases?: string[]) => {
+  addPerson: async (name: string, typicalPlace?: string | null, primaryPhone?: string | null, aliases?: string[]) => {
     const trimmed = name.trim();
     // Check if this name matches an existing person or alias
     const existingByName = await db.select().from(persons).where(sql`lower(name) = lower(${trimmed})`);
@@ -28,6 +28,7 @@ export const api = {
       id: personId,
       name: trimmed,
       typicalPlace: typicalPlace?.trim() || null,
+      primaryPhone: primaryPhone?.trim() || null,
     }).returning();
 
     // Insert aliases if provided
@@ -47,11 +48,13 @@ export const api = {
   updatePerson: async (personId: string, updates: {
     name?: string;
     typicalPlace?: string | null;
+    primaryPhone?: string | null;
     aliases?: string[];
   }) => {
     const setValues: any = {};
     if (updates.name !== undefined) setValues.name = updates.name.trim();
     if (updates.typicalPlace !== undefined) setValues.typicalPlace = updates.typicalPlace?.trim() || null;
+    if (updates.primaryPhone !== undefined) setValues.primaryPhone = updates.primaryPhone?.trim() || null;
 
     if (Object.keys(setValues).length > 0) {
       await db.update(persons).set(setValues).where(eq(persons.id, personId));
@@ -466,7 +469,7 @@ export const api = {
                   amount: -diff,
                   date: new Date().toISOString(),
                   type: 'ManualAdjustment',
-                  note: `Price correction for ${itemName}: $${effectiveOldPrice} -> $${newPrice}`,
+                  note: `Price correction for ${itemName}: EGP ${effectiveOldPrice} -> EGP ${newPrice}`,
                 });
               }
             }
